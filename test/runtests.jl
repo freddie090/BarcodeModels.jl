@@ -4,8 +4,7 @@ using BarcodeModels
 function simulate(model::AbstractBarcodeModel)
     exp = ExperimentParams(
         n0 = 10,
-        rho = 0.0,
-        t_exp = 6.0,
+        t_exp = 8.0,
         tmax = 10.0,
         t_Pass = -1.0,
         Nseed = 10,
@@ -14,7 +13,9 @@ function simulate(model::AbstractBarcodeModel)
         treat_ons = Float64[],
         treat_offs = Float64[],
         t_keep = [10.0],
-        Nswitch = 100
+        Nswitch = 100,
+        full_sol = true,
+        n_rep = 4
     )
     return BarcodeModels.simulate(model, exp)
 end
@@ -23,6 +24,7 @@ end
     params = ModelParams(
         b = 1.0,
         d = 0.1,
+        rho = 0.0,
         mu = 0.0,
         sig = 0.0,
         del = 0.0,

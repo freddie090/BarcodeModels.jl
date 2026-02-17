@@ -11,6 +11,7 @@ end
 struct ModelParams
     b::Float64
     d::Float64
+    rho::Float64
     mu::Float64
     sig::Float64
     del::Float64
@@ -21,15 +22,16 @@ struct ModelParams
     drug_effect::Symbol
 end
 
-function ModelParams(; b, d, mu, sig, del, al, Dc, k, psi, drug_effect="d")
+function ModelParams(; b, d, rho=0.0, mu, sig, del, al, Dc, k, psi, drug_effect="d")
     de = normalize_drug_effect(drug_effect)
     return ModelParams(
-        Float64(b), Float64(d), Float64(mu), Float64(sig), Float64(del),
+        Float64(b), Float64(d), Float64(rho), Float64(mu), Float64(sig), Float64(del),
         Float64(al), Float64(Dc), Float64(k), Float64(psi), de
     )
 end
 
 function validate_model_params(params::ModelParams)
+    0.0 <= params.rho <= 1.0 || error("rho must be between 0 and 1.")
     0.0 <= params.mu <= 1.0 || error("mu must be between 0 and 1.")
     0.0 <= params.sig <= 1.0 || error("sig must be between 0 and 1.")
     0.0 <= params.del <= 1.0 || error("del must be between 0 and 1.")
@@ -80,7 +82,6 @@ end
 
 struct ExperimentParams
     n0::Int64
-    rho::Float64
     t_exp::Union{Float64, Vector{Float64}}
     tmax::Float64
     t_Pass::Union{Float64, Vector{Float64}}
@@ -106,7 +107,7 @@ struct ExperimentParams
     ColNmax::Int64
 end
 
-function ExperimentParams(; n0, rho, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
+function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                           treat_ons, treat_offs, t_keep, Nswitch,
                           save_at=0.5, n_Pass=1, n_rep=4, drug_treatment=true,
                           full_sol=false, run_IC=false, IC_n0=1000,
@@ -114,7 +115,6 @@ function ExperimentParams(; n0, rho, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                           nCol=1000, tCol=12.0, ColNmax=50)
     return ExperimentParams(
         Int64(n0),
-        Float64(rho),
         t_exp,
         Float64(tmax),
         t_Pass,

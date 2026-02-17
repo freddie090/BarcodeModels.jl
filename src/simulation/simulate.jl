@@ -6,7 +6,7 @@ function simulate(model::AbstractBarcodeModel, exp::ExperimentParams; kwargs...)
     de = _kw(kwargs, :drug_effect, model.params.drug_effect)
     return simulate_expansion_and_treatment_hybrid(
         exp.n0, model.params.b, model.params.d,
-        exp.rho, model.params.mu, model.params.sig, model.params.del, model.params.al,
+        model.params.rho, model.params.mu, model.params.sig, model.params.del, model.params.al,
         model.params.Dc, model.params.k, model.params.psi,
         exp.t_exp, exp.tmax, exp.t_Pass,
         exp.Nseed, exp.Nmax, exp.Cc,
