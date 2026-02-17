@@ -42,9 +42,7 @@ simulate_expansion_and_treatment_hybrid(
     drug_effect="d", full_sol=false
 ) -> Dict
 
-Simulates clonal expansion and pulsed drug treatment using a hybrid model combining ODEs and stochastic jump processes.
-
-Each replicate begins with untreated expansion, followed by splitting into replicates exposed to drug pulses. Phenotype switching and logistic growth are included. Population size is updated deterministically or stochastically depending on compartment size.
+Simulates barcoded pool expansion and pulsed drug treatment using a hybrid model combining ODEs and stochastic jump processes.
 """
 function simulate_expansion_and_treatment_hybrid(n0::Int64, b::Float64, d::Float64,
     rho::Float64, mu::Float64, sig::Float64, del::Float64, al::Float64,

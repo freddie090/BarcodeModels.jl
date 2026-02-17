@@ -14,7 +14,7 @@ include("types/Parameters.jl")
 include("types/State.jl")
 
 include("models/abstract.jl")
-include("models/mono.jl")
+include("models/res_pop.jl")
 
 include("simulation/simulate.jl")
 
@@ -22,7 +22,7 @@ export
     DRUG_EFFECTS,
     ModelParams, SimParams, ExperimentParams,
     ModelState,
-    AbstractBarcodeModel, MonoModel,
+    AbstractBarcodeModel, ResPop,
     simulate_grow_kill,
     simulate, simulate_expansion_and_treatment_hybrid,
     model_meas_noise

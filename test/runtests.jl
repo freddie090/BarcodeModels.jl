@@ -35,8 +35,8 @@ end
         drug_effect = :d
     )
 
-    model = MonoModel(params)
-    @test model isa MonoModel
+    model = ResPop(params)
+    @test model isa ResPop
 
     result = simulate(model)
     @test result !== nothing

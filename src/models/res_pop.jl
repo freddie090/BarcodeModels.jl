@@ -68,17 +68,17 @@ function multivariate_hypergeometric_draw(population_sizes, num_samples)
     return draws
 end
 
-"""Monoculture barcode model (validates parameters on construction)."""
-struct MonoModel <: AbstractBarcodeModel
+"""Resistance population (res_pop) model (validates parameters on construction)."""
+struct ResPop <: AbstractBarcodeModel
     params::ModelParams
-    function MonoModel(params::ModelParams)
+    function ResPop(params::ModelParams)
         validate_model_params(params)
         new(params)
     end
 end
 
-"""Construct a `MonoModel` from keyword arguments forwarded to `ModelParams`."""
-MonoModel(; kwargs...) = MonoModel(ModelParams(; kwargs...))
+"""Construct a `ResPop` from keyword arguments forwarded to `ModelParams`."""
+ResPop(; kwargs...) = ResPop(ModelParams(; kwargs...))
 
 """Build component-rate parameters and return them with baseline rates."""
 function build_component_params(params::ModelParams)
@@ -106,10 +106,10 @@ end
 """
 Run the hybrid growth/kill model with a model, state, and simulation settings.
 
-Arguments: `model::MonoModel`, `state::ModelState`, `sim::SimParams`.
+Arguments: `model::ResPop`, `state::ModelState`, `sim::SimParams`.
 Returns: `ODESolution`.
 """
-function simulate_grow_kill(model::MonoModel, state::ModelState, sim::SimParams)
+function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
     params = model.params
     de = params.drug_effect
 
@@ -630,7 +630,7 @@ function simulate_grow_kill(n0::Int64, nS::Float64, nR::Float64, nE::Float64,
     n_Pass::Int64 = 1, epsi::Float64 = 100.0,
     drug_effect::Union{String, Symbol} = "d")
 
-    model = MonoModel(ModelParams(
+    model = ResPop(ModelParams(
         b = b, d = d, mu = mu, sig = sig, del = del, al = al,
         Dc = Dc, k = k, psi = psi, drug_effect = drug_effect
     ))
