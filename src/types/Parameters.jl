@@ -80,6 +80,32 @@ function SimParams(; n0, tmax, Nmax, Cc, Nswitch, treat_ons, treat_offs,
     )
 end
 
+struct ABMParams
+    Nbuff::Int64
+    t_frac::Float64
+    dt_save_at::Float64
+    skew_lib::Bool
+    bc_unif::Float64
+    Nbc::Int64
+    sub_sample_cells::Bool
+    K::Int64
+end
+
+function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
+                   skew_lib=false, bc_unif=0.0, Nbc=0,
+                   sub_sample_cells=false, K=0)
+    return ABMParams(
+        Int64(Nbuff),
+        Float64(t_frac),
+        Float64(dt_save_at),
+        Bool(skew_lib),
+        Float64(bc_unif),
+        Int64(Nbc),
+        Bool(sub_sample_cells),
+        Int64(K)
+    )
+end
+
 struct ExperimentParams
     n0::Int64
     t_exp::Union{Float64, Vector{Float64}}

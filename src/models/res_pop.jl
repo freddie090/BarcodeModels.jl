@@ -1,75 +1,5 @@
-const GAM_INDEX = 1
-const NS_INDEX = 2
-const NR_INDEX = 3
-const NE_INDEX = 4
-const PASS_INDEX = 5
-
-# Population and logistic helpers
-total_population(u) = u[NS_INDEX] + u[NR_INDEX] + u[NE_INDEX]
-logistic_factor(N::Real, Cc::Real) = 1 - (N / Cc)
-logistic_factor(u::AbstractVector, Cc::Real) = logistic_factor(total_population(u), Cc)
-
-"""Select a behavior based on `drug_effect` (:d, :b, or :c)."""
-function select_drug_effect(de, f_d, f_b, f_c)
-    return de == :d ? f_d : de == :b ? f_b : de == :c ? f_c :
-           error("Invalid drug_effect value: must be :b, :d, or :c")
-end
-
-# Drug-effect modifiers for ODE rates (no allocations inside ode_fxn!).
-function apply_drug_effect_death(b_ref, d_ref, b, d, Dc, gam, N, Cc, psi)
-    lf = logistic_factor(N, Cc)
-    b_mod = b * lf
-    d_mod = (d + ((d / d_ref) * Dc * gam * (1 - psi))) * lf
-    return b_mod, d_mod
-end
-
-function apply_drug_effect_birth(b_ref, d_ref, b, d, Dc, gam, N, Cc, psi)
-    lf = logistic_factor(N, Cc)
-    b_mod = (b - ((b / b_ref) * Dc * gam * (1 - psi))) * lf
-    d_mod = d * lf
-    return b_mod, d_mod
-end
-
-function apply_drug_effect_combined(b_ref, d_ref, b, d, Dc, gam, N, Cc, psi)
-    lf = logistic_factor(N, Cc)
-    b_eff = b - ((b / b_ref) * Dc * gam * (1 - psi))
-    if b_eff >= 0
-        b_mod = b_eff * lf
-        d_mod = d * lf
-    else
-        b_mod = 0.0
-        d_mod = (d + abs(b_eff)) * lf
-    end
-    return b_mod, d_mod
-end
-
-"""Return the population slice (sensitive, resistant, escape)."""
-pop_fun(x) = x[NS_INDEX:NE_INDEX]
-
-"""Return the passage counter from a state vector."""
-pass_fun(x) = x[PASS_INDEX]
-
-"""Draw multivariate hypergeometric counts (uses RNG)."""
-function multivariate_hypergeometric_draw(population_sizes, num_samples)
-    remaining_samples = num_samples
-    total_population = sum(population_sizes)
-    draws = zeros(Int, length(population_sizes))
-
-    for i in 1:(length(population_sizes) - 1)
-        if remaining_samples > 0
-            draws[i] = rand(Hypergeometric(population_sizes[i],
-                                            total_population - population_sizes[i],
-                                            remaining_samples))
-            remaining_samples -= draws[i]
-            total_population -= population_sizes[i]
-        end
-    end
-    draws[end] = remaining_samples
-    return draws
-end
-
 """Resistance population (res_pop) model (validates parameters on construction)."""
-struct ResPop <: AbstractBarcodeModel
+struct ResPop <: HybridModel
     params::ModelParams
     function ResPop(params::ModelParams)
         validate_model_params(params)
@@ -109,7 +39,23 @@ Run the hybrid growth/kill model with a model, state, and simulation settings.
 Arguments: `model::ResPop`, `state::ModelState`, `sim::SimParams`.
 Returns: `ODESolution`.
 """
-function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
+function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams; treat::Bool = sim.treat)
+    sim_eff = treat == sim.treat ? sim : SimParams(
+        n0 = sim.n0,
+        t0 = sim.t0,
+        tmax = sim.tmax,
+        t_Pass = sim.t_Pass,
+        Nmax = sim.Nmax,
+        Cc = sim.Cc,
+        Nswitch = sim.Nswitch,
+        treat_ons = sim.treat_ons,
+        treat_offs = sim.treat_offs,
+        save_at = sim.save_at,
+        treat = treat,
+        n_Pass = sim.n_Pass,
+        epsi = sim.epsi
+    )
+
     params = model.params
     de = params.drug_effect
 
@@ -120,7 +66,7 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
     p, bS, dS, bR, dR, bE, dE = build_component_params(params)
 
     u0 = to_componentarray(state)
-    tspan = (sim.t0, sim.tmax)
+    tspan = (sim_eff.t0, sim_eff.tmax)
 
     rate_modifier = select_drug_effect(de,
         apply_drug_effect_death,
@@ -128,8 +74,8 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
         apply_drug_effect_combined
     )
 
-    t_pass_vec = sim.t_Pass isa AbstractVector ? Vector{Float64}(sim.t_Pass) : fill(Float64(sim.t_Pass), sim.n_Pass)
-    if length(t_pass_vec) < sim.n_Pass
+    t_pass_vec = sim_eff.t_Pass isa AbstractVector ? Vector{Float64}(sim_eff.t_Pass) : fill(Float64(sim_eff.t_Pass), sim_eff.n_Pass)
+    if length(t_pass_vec) < sim_eff.n_Pass
         error("t_Pass length must be >= n_Pass")
     end
 
@@ -139,7 +85,7 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
     function build_birth_death_rates(de, idx, b_ref, d_ref, b_sym::Symbol, d_sym::Symbol; psi_fn = p -> 0.0)
         function logistic_scale(u)
             N = total_population(u)
-            return logistic_factor(N, sim.Cc)
+            return logistic_factor(N, sim_eff.Cc)
         end
 
         function birth_drug_adjustment(u, p)
@@ -202,7 +148,7 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
             if gamma_factor
                 base *= u[GAM_INDEX]
             end
-            return base * logistic_factor(N, sim.Cc)
+            return base * logistic_factor(N, sim_eff.Cc)
         end
 
         function rate_b(u, p, t)
@@ -214,7 +160,7 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
             if gamma_factor
                 base *= u[GAM_INDEX]
             end
-            return base * logistic_factor(N, sim.Cc)
+            return base * logistic_factor(N, sim_eff.Cc)
         end
 
         function rate_c(u, p, t)
@@ -227,7 +173,7 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
                 if gamma_factor
                     base *= u[GAM_INDEX]
                 end
-                return base * logistic_factor(N, sim.Cc)
+                return base * logistic_factor(N, sim_eff.Cc)
             else
                 return 0.0
             end
@@ -243,9 +189,9 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
 
         N = nS + nR + nE
 
-        bS_o_mod, dS_o_mod = rate_modifier(bS, dS, p.bS_o, p.dS_o, p.Dc, gam, N, sim.Cc, 0.0)
-        bR_o_mod, dR_o_mod = rate_modifier(bR, dR, p.bR_o, p.dR_o, p.Dc, gam, N, sim.Cc, psi)
-        bE_o_mod, dE_o_mod = rate_modifier(bE, dE, p.bE_o, p.dE_o, p.Dc, gam, N, sim.Cc, psi)
+        bS_o_mod, dS_o_mod = rate_modifier(bS, dS, p.bS_o, p.dS_o, p.Dc, gam, N, sim_eff.Cc, 0.0)
+        bR_o_mod, dR_o_mod = rate_modifier(bR, dR, p.bR_o, p.dR_o, p.Dc, gam, N, sim_eff.Cc, psi)
+        bE_o_mod, dE_o_mod = rate_modifier(bE, dE, p.bE_o, p.dE_o, p.Dc, gam, N, sim_eff.Cc, psi)
 
         du.gam = kp
         du.nS = (bS_o_mod - dS_o_mod) * nS -
@@ -345,7 +291,7 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
         nothing
     end
 
-    RE_switch_rate = build_switch_rate(de, NR_INDEX, p -> (p.bR_o + p.bR_j), p -> p.al_j; gamma_factor=true)
+    RE_switch_rate = build_switch_rate(de, NR_INDEX, p -> (p.bR_o + p.bR_j), p -> p.al_j; gamma_factor = true)
     RE_switch_jump = VariableRateJump(RE_switch_rate, RE_switch!)
 
     ###########
@@ -355,7 +301,7 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
     mu = params.mu
     sig = params.sig
     al = params.al
-    n0 = sim.n0
+    n0 = sim_eff.n0
 
     # ODE/jump toggle callbacks for phenotype birth/death rates.
     function build_bd_toggle_callbacks(idx, b_o_sym, b_j_sym, d_o_sym, d_j_sym, Nswitch)
@@ -394,8 +340,9 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
     end
 
     # ODE/jump toggle callbacks for switch rates.
-    function build_rate_toggle_callbacks(idx, rate_value, rate_o_sym, rate_j_sym, epsi)
-        cond_to_ode(u, t, integrator) = (integrator.u[idx] * rate_value) >= epsi
+    function build_rate_toggle_callbacks(idx, rate_value, rate_o_sym, rate_j_sym, epsi;
+                                         activity_fn = integrator -> (integrator.u[idx] * rate_value))
+        cond_to_ode(u, t, integrator) = activity_fn(integrator) >= epsi
         function switch_to_ode!(integrator)
             if getproperty(integrator.p, rate_o_sym) == 0.0
                 setproperty!(integrator.p, rate_o_sym, deepcopy(getproperty(integrator.p, rate_j_sym)))
@@ -406,7 +353,7 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
         cb1 = DiscreteCallback(cond_to_ode, switch_to_ode!,
                                save_positions = (false, true))
 
-        cond_to_jump(u, t, integrator) = (integrator.u[idx] * rate_value) < epsi
+        cond_to_jump(u, t, integrator) = activity_fn(integrator) < epsi
         function switch_to_jump!(integrator)
             if getproperty(integrator.p, rate_j_sym) == 0.0
                 setproperty!(integrator.p, rate_j_sym, deepcopy(getproperty(integrator.p, rate_o_sym)))
@@ -461,32 +408,42 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
 
     # Sensitive
     S_cb_switch1, S_cb_switch2 = build_bd_toggle_callbacks(
-        NS_INDEX, :bS_o, :bS_j, :dS_o, :dS_j, sim.Nswitch
+        NS_INDEX, :bS_o, :bS_j, :dS_o, :dS_j, sim_eff.Nswitch
     )
 
     # Resistant
     R_cb_switch1, R_cb_switch2 = build_bd_toggle_callbacks(
-        NR_INDEX, :bR_o, :bR_j, :dR_o, :dR_j, sim.Nswitch
+        NR_INDEX, :bR_o, :bR_j, :dR_o, :dR_j, sim_eff.Nswitch
     )
 
     # Escape
     E_cb_switch1, E_cb_switch2 = build_bd_toggle_callbacks(
-        NE_INDEX, :bE_o, :bE_j, :dE_o, :dE_j, sim.Nswitch
+        NE_INDEX, :bE_o, :bE_j, :dE_o, :dE_j, sim_eff.Nswitch
     )
 
     # Sensitive -> Resistant
     SR_cb_switch1, SR_cb_switch2 = build_rate_toggle_callbacks(
-        NS_INDEX, mu, :mu_o, :mu_j, sim.epsi
+        NS_INDEX, mu, :mu_o, :mu_j, sim_eff.epsi
     )
 
     # Resistant -> Sensitive
     RS_cb_switch1, RS_cb_switch2 = build_rate_toggle_callbacks(
-        NR_INDEX, sig, :sig_o, :sig_j, sim.epsi
+        NR_INDEX, sig, :sig_o, :sig_j, sim_eff.epsi
     )
 
     # Resistant -> Escape
+    RE_activity_proxy = function (integrator)
+
+        N = total_population(integrator.u)
+        b_total = integrator.p.bR_o + integrator.p.bR_j
+        gamma = integrator.u[GAM_INDEX]
+
+        return integrator.u[NR_INDEX] * al * b_total * gamma * logistic_factor(N, sim_eff.Cc)
+    end
+
     RE_cb_switch1, RE_cb_switch2 = build_rate_toggle_callbacks(
-        NR_INDEX, al, :al_o, :al_j, sim.epsi
+        NR_INDEX, al, :al_o, :al_j, sim_eff.epsi;
+        activity_fn = RE_activity_proxy
     )
 
     # Treatment schedule callbacks (use preset times for robustness).
@@ -498,10 +455,10 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
         integrator.p.kp = -params.k
     end
 
-    filter_times_in_span(times) = sort(unique(filter(t -> (t >= sim.t0 && t <= sim.tmax), times)))
+    filter_times_in_span(times) = sort(unique(filter(t -> (t >= sim_eff.t0 && t <= sim_eff.tmax), times)))
 
-    treat_on_times = filter_times_in_span(sim.treat_ons)
-    treat_off_times = filter_times_in_span(sim.treat_offs)
+    treat_on_times = filter_times_in_span(sim_eff.treat_ons)
+    treat_off_times = filter_times_in_span(sim_eff.treat_offs)
 
     treat_on_cb = isempty(treat_on_times) ? nothing :
                   PresetTimeCallback(treat_on_times, set_treatment_on!; save_positions = (false, true))
@@ -527,10 +484,10 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
                                     save_positions = (false, true))
 
     # Nmax, Extinction & Passage
-    nmax_reached(u, t, integrator) = (total_population(integrator.u) >= sim.Nmax)
+    nmax_reached(u, t, integrator) = (total_population(integrator.u) >= sim_eff.Nmax)
 
     function handle_nmax!(integrator)
-        if integrator.u[PASS_INDEX] >= sim.n_Pass
+        if integrator.u[PASS_INDEX] >= sim_eff.n_Pass
             terminate!(integrator)
         else
             attempt_passage!(integrator, n0; require_enough = false)
@@ -546,7 +503,7 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
 
     function apply_scheduled_passage!(integrator)
         curr_pass = round(Int, integrator.u[PASS_INDEX])
-        if curr_pass < sim.n_Pass
+        if curr_pass < sim_eff.n_Pass
             expected_t = t_pass_vec[curr_pass]
             # Only attempt the passage scheduled for the current pass.
             if integrator.t == expected_t
@@ -580,7 +537,7 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
         push!(cb_list, passage_cb)
     end
 
-    if sim.treat == true
+    if sim_eff.treat == true
         if treat_on_cb !== nothing
             push!(cb_list, treat_on_cb)
         end
@@ -600,9 +557,9 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
                            RS_switch_jump,
                            RE_switch_jump)
 
-    base_tstops = collect(sim.t0:sim.save_at:sim.tmax)
+    base_tstops = collect(sim_eff.t0:sim_eff.save_at:sim_eff.tmax)
     event_times = passage_times
-    if sim.treat == true
+    if sim_eff.treat == true
         event_times = vcat(event_times, treat_on_times, treat_off_times)
     end
     tstops = isempty(event_times) ? base_tstops : sort(unique(vcat(base_tstops, event_times)))
@@ -612,6 +569,9 @@ function simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams)
 
     return sol
 end
+
+simulate_grow_kill(model::ResPop, state::ModelState, sim::SimParams) =
+    run_model_core_hybrid(model, state, sim; treat = sim.treat)
 
 """
 Run the hybrid growth/kill model using primitive arguments.
@@ -644,5 +604,5 @@ function simulate_grow_kill(n0::Int64, nS::Float64, nR::Float64, nE::Float64,
         save_at = save_at, treat = treat, n_Pass = n_Pass, epsi = epsi
     )
 
-    return simulate_grow_kill(model, state, sim)
+    return run_model_core_hybrid(model, state, sim; treat = treat)
 end

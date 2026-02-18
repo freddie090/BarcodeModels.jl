@@ -13,8 +13,12 @@ BarcodeModels.jl is a Julia package for simulating barcode-tracked cell populati
 - `src/types/Parameters.jl`: Parameter types and validation.
 - `src/types/State.jl`: State definitions and helpers.
 - `src/models/abstract.jl`: Abstract model type.
-- `src/models/res_pop.jl`: Resistance population model implementation.
-- `src/simulation/simulate.jl`: Experiment run functions.
+- `src/helpers/common_helpers.jl`: Shared helper functions.
+- `src/helpers/ode_helpers.jl`: Hybrid/ODE helper functions.
+- `src/helpers/abm_helpers.jl`: ABM helper functions.
+- `src/models/res_pop.jl`: Hybrid resistance population model core simulation logic.
+- `src/models/res_pop_abm.jl`: ABM resistance population model core simulation logic.
+- `src/simulation/simulate.jl`: Shared experiment orchestration drivers and API dispatch.
 - `test/runtests.jl`: Minimal integration test.
 
 ## Quick start
@@ -51,15 +55,15 @@ exp = ExperimentParams(
     Nswitch = 100
 )
 
-result = simulate(model, exp)
+result = simulate_experiment(model, exp)
 ```
 
 ## Key API
 - `ModelParams`: Core model parameters (including `rho`, the initial resistant fraction).
 - `ResPop`: Resistance population model that validates parameters on construction.
+- `ResPop_ABM`: Agent-based resistance population model.
 - `ExperimentParams`: Experiment-level configuration (times, passage schedule, sampling).
-- `simulate(model, exp; kwargs...)`: Runs the expansion + treatment hybrid simulation.
-- `simulate_grow_kill(...)`: Lower-level growth/kill simulation helper.
+- `simulate_experiment(model, exp; kwargs...)`: Runs the experiment using the model-class-specific driver.
 
 ## Tests
 ```bash
