@@ -141,7 +141,7 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
     end
 
     # Build a switching-rate closure for a phenotype and drug mode.
-    function build_switch_rate(de, idx, b_total_fn, rate_fn; gamma_factor=false)
+    function build_switch_rate(de, idx, b_total_fn, rate_fn; gamma_factor = false, psi_fn = p -> 0.0)
         function rate_d(u, p, t)
             N = total_population(u)
             base = u[idx] * rate_fn(p) * b_total_fn(p)
@@ -154,7 +154,7 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
         function rate_b(u, p, t)
             N = total_population(u)
             b_total = b_total_fn(p)
-            drug_interaction = (b_total * p.Dc * u[GAM_INDEX])
+            drug_interaction = (b_total * p.Dc * u[GAM_INDEX] * (1 - psi_fn(p)))
             b_drug = b_total - drug_interaction
             base = u[idx] * b_drug * rate_fn(p)
             if gamma_factor
@@ -166,7 +166,7 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
         function rate_c(u, p, t)
             N = total_population(u)
             b_total = b_total_fn(p)
-            drug_interaction = (b_total * p.Dc * u[GAM_INDEX])
+            drug_interaction = (b_total * p.Dc * u[GAM_INDEX] * (1 - psi_fn(p)))
             b_drug = b_total - drug_interaction
             if b_drug >= 0.0
                 base = u[idx] * b_drug * rate_fn(p)
@@ -281,7 +281,7 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
         nothing
     end
 
-    RS_switch_rate = build_switch_rate(de, NR_INDEX, p -> (p.bR_o + p.bR_j), p -> p.sig_j)
+    RS_switch_rate = build_switch_rate(de, NR_INDEX, p -> (p.bR_o + p.bR_j), p -> p.sig_j; psi_fn = p -> p.psi)
     RS_switch_jump = VariableRateJump(RS_switch_rate, RS_switch!)
 
     # Resistant -> Escape
@@ -291,7 +291,8 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
         nothing
     end
 
-    RE_switch_rate = build_switch_rate(de, NR_INDEX, p -> (p.bR_o + p.bR_j), p -> p.al_j; gamma_factor = true)
+    RE_switch_rate = build_switch_rate(de, NR_INDEX, p -> (p.bR_o + p.bR_j), p -> p.al_j;
+                                       gamma_factor = true, psi_fn = p -> p.psi)
     RE_switch_jump = VariableRateJump(RE_switch_rate, RE_switch!)
 
     ###########
@@ -437,8 +438,19 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
         N = total_population(integrator.u)
         b_total = integrator.p.bR_o + integrator.p.bR_j
         gamma = integrator.u[GAM_INDEX]
+        psi = integrator.p.psi
+        drug_interaction = b_total * integrator.p.Dc * gamma * (1 - psi)
+        b_drug = b_total - drug_interaction
 
-        return integrator.u[NR_INDEX] * al * b_total * gamma * logistic_factor(N, sim_eff.Cc)
+        b_effective = if de === :d
+            b_total
+        elseif de === :b
+            b_drug
+        else
+            max(b_drug, 0.0)
+        end
+
+        return integrator.u[NR_INDEX] * al * b_effective * gamma * logistic_factor(N, sim_eff.Cc)
     end
 
     RE_cb_switch1, RE_cb_switch2 = build_rate_toggle_callbacks(
