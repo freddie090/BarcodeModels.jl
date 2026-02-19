@@ -83,17 +83,19 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
 
     # Build birth/death rate closures for a phenotype and drug mode.
     function build_birth_death_rates(de, idx, b_ref, d_ref, b_sym::Symbol, d_sym::Symbol; psi_fn = p -> 0.0)
+        safe_ratio(num, den) = abs(den) > eps(Float64) ? (num / den) : 0.0
+
         function logistic_scale(u)
             N = total_population(u)
             return logistic_factor(N, sim_eff.Cc)
         end
 
         function birth_drug_adjustment(u, p)
-            return ((getproperty(p, b_sym) / b_ref) * p.Dc * u[GAM_INDEX] * (1 - psi_fn(p)))
+            return (safe_ratio(getproperty(p, b_sym), b_ref) * p.Dc * u[GAM_INDEX] * (1 - psi_fn(p)))
         end
 
         function death_drug_adjustment(u, p)
-            return ((getproperty(p, d_sym) / d_ref) * p.Dc * u[GAM_INDEX] * (1 - psi_fn(p)))
+            return (safe_ratio(getproperty(p, d_sym), d_ref) * p.Dc * u[GAM_INDEX] * (1 - psi_fn(p)))
         end
 
         function birth_d(u, p, t)
