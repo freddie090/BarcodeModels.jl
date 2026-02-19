@@ -60,7 +60,12 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
     de = params.drug_effect
 
     if de == :b
+        bR = params.b * (1 - params.del)
+        psi_scale = 1 - params.psi
         params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
+        if psi_scale > 0.0
+            params.Dc <= (bR / psi_scale) || error("When drug_effect == :b, Dc*(1-psi) must be <= b*(1-del) to keep resistant birth non-negative. Use drug_effect == :c if stronger drug effects are intended.")
+        end
     end
 
     p, bS, dS, bR, dR, bE, dE = build_component_params(params)

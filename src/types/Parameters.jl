@@ -36,10 +36,17 @@ function validate_model_params(params::ModelParams)
     0.0 <= params.sig <= 1.0 || error("sig must be between 0 and 1.")
     0.0 <= params.del <= 1.0 || error("del must be between 0 and 1.")
     0.0 <= params.al <= 1.0 || error("al must be between 0 and 1.")
+    0.0 <= params.psi <= 1.0 || error("psi must be between 0 and 1.")
     0.0 <= (params.al + params.sig) <= 1.0 || error("al and sig must not sum to > 1.0")
     params.drug_effect in DRUG_EFFECTS || error("drug_effect must be :d, :b, or :c")
     if params.drug_effect === :b
         params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
+
+        bR = params.b * (1 - params.del)
+        psi_scale = 1 - params.psi
+        if psi_scale > 0.0
+            params.Dc <= (bR / psi_scale) || error("When drug_effect == :b, Dc*(1-psi) must be <= b*(1-del) to keep resistant birth non-negative. Use drug_effect == :c if stronger drug effects are intended.")
+        end
     end
     return params
 end
