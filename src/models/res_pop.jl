@@ -87,7 +87,7 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
 
         function logistic_scale(u)
             N = total_population(u)
-            return logistic_factor(N, sim_eff.Cc)
+            return max(logistic_factor(N, sim_eff.Cc), 0.0)
         end
 
         function birth_drug_adjustment(u, p)
@@ -144,17 +144,20 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
 
     # Build a switching-rate closure for a phenotype and drug mode.
     function build_switch_rate(de, idx, b_total_fn, rate_fn; gamma_factor = false, psi_fn = p -> 0.0)
-        function rate_d(u, p, t)
+        function logistic_scale(u)
             N = total_population(u)
+            return max(logistic_factor(N, sim_eff.Cc), 0.0)
+        end
+
+        function rate_d(u, p, t)
             base = u[idx] * rate_fn(p) * b_total_fn(p)
             if gamma_factor
                 base *= u[GAM_INDEX]
             end
-            return base * logistic_factor(N, sim_eff.Cc)
+            return base * logistic_scale(u)
         end
 
         function rate_b(u, p, t)
-            N = total_population(u)
             b_total = b_total_fn(p)
             drug_interaction = (b_total * p.Dc * u[GAM_INDEX] * (1 - psi_fn(p)))
             b_drug = b_total - drug_interaction
@@ -162,11 +165,10 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
             if gamma_factor
                 base *= u[GAM_INDEX]
             end
-            return base * logistic_factor(N, sim_eff.Cc)
+            return base * logistic_scale(u)
         end
 
         function rate_c(u, p, t)
-            N = total_population(u)
             b_total = b_total_fn(p)
             drug_interaction = (b_total * p.Dc * u[GAM_INDEX] * (1 - psi_fn(p)))
             b_drug = b_total - drug_interaction
@@ -175,7 +177,7 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
                 if gamma_factor
                     base *= u[GAM_INDEX]
                 end
-                return base * logistic_factor(N, sim_eff.Cc)
+                return base * logistic_scale(u)
             else
                 return 0.0
             end

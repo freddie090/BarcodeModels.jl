@@ -63,6 +63,8 @@ end
 function SimParams(; n0, tmax, Nmax, Cc, Nswitch, treat_ons, treat_offs,
                     t0=0.0, t_Pass=-1.0, save_at=0.5, treat=false,
                     n_Pass=1, epsi=100.0)
+    Int64(Cc) > 0 || error("Cc must be > 0.")
+
     return SimParams(
         Int64(n0),
         Float64(t0),
@@ -133,12 +135,110 @@ struct ExperimentParams
     ColNmax::Int64
 end
 
+function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
+                                    treat_ons, treat_offs, t_keep, Nswitch,
+                                    save_at, n_Pass, n_rep, drug_treatment,
+                                    full_sol, run_IC, IC_n0, IC_tmax,
+                                    IC_treat_on, run_colony, nCol, tCol, ColNmax)
+    n0 isa Integer || error("n0 must be an integer.")
+    n0 > 0 || error("n0 must be > 0.")
+
+    (t_exp isa Real || t_exp isa AbstractVector{<:Real}) || error("t_exp must be a number or a vector of numbers.")
+
+    tmax isa Real || error("tmax must be a number.")
+    tmax > 0 || error("tmax must be > 0.")
+
+    (t_Pass isa Real || t_Pass isa AbstractVector{<:Real}) || error("t_Pass must be a number or a vector of numbers.")
+
+    (Nseed isa Integer || Nseed isa AbstractVector{<:Integer}) || error("Nseed must be an integer or a vector of integers.")
+    if Nseed isa Integer
+        Nseed > 0 || error("Nseed must be > 0.")
+    else
+        all(x -> x > 0, Nseed) || error("All Nseed values must be > 0.")
+    end
+
+    Nmax isa Integer || error("Nmax must be an integer.")
+    Nmax > 0 || error("Nmax must be > 0.")
+
+    Cc isa Integer || error("Cc must be an integer.")
+    Cc > 0 || error("Cc must be > 0.")
+    Nmax <= Cc || error("Nmax must be <= Cc.")
+
+    treat_ons isa AbstractVector{<:Real} || error("treat_ons must be a vector of numbers.")
+    treat_offs isa AbstractVector{<:Real} || error("treat_offs must be a vector of numbers.")
+    t_keep isa AbstractVector{<:Real} || error("t_keep must be a vector of numbers.")
+
+    Nswitch isa Integer || error("Nswitch must be an integer.")
+    Nswitch > 0 || error("Nswitch must be > 0.")
+
+    save_at isa Real || error("save_at must be a number.")
+    save_at > 0 || error("save_at must be > 0.")
+
+    n_Pass isa Integer || error("n_Pass must be an integer.")
+    n_Pass > 0 || error("n_Pass must be > 0.")
+
+    n_rep isa Integer || error("n_rep must be an integer.")
+    n_rep > 0 || error("n_rep must be > 0.")
+
+    drug_treatment isa Bool || error("drug_treatment must be Bool.")
+    full_sol isa Bool || error("full_sol must be Bool.")
+    run_IC isa Bool || error("run_IC must be Bool.")
+
+    IC_n0 isa Integer || error("IC_n0 must be an integer.")
+    IC_n0 > 0 || error("IC_n0 must be > 0.")
+
+    IC_tmax isa Real || error("IC_tmax must be a number.")
+    IC_tmax > 0 || error("IC_tmax must be > 0.")
+
+    IC_treat_on isa Real || error("IC_treat_on must be a number.")
+
+    run_colony isa Bool || error("run_colony must be Bool.")
+
+    nCol isa Integer || error("nCol must be an integer.")
+    nCol > 0 || error("nCol must be > 0.")
+
+    tCol isa Real || error("tCol must be a number.")
+    tCol > 0 || error("tCol must be > 0.")
+
+    ColNmax isa Integer || error("ColNmax must be an integer.")
+    ColNmax > 0 || error("ColNmax must be > 0.")
+
+    return nothing
+end
+
 function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                           treat_ons, treat_offs, t_keep, Nswitch,
                           save_at=0.5, n_Pass=1, n_rep=4, drug_treatment=true,
                           full_sol=false, run_IC=false, IC_n0=1000,
                           IC_tmax=4.0, IC_treat_on=1.0, run_colony=false,
                           nCol=1000, tCol=12.0, ColNmax=50)
+    validate_experiment_params(
+        n0 = n0,
+        t_exp = t_exp,
+        tmax = tmax,
+        t_Pass = t_Pass,
+        Nseed = Nseed,
+        Nmax = Nmax,
+        Cc = Cc,
+        treat_ons = treat_ons,
+        treat_offs = treat_offs,
+        t_keep = t_keep,
+        Nswitch = Nswitch,
+        save_at = save_at,
+        n_Pass = n_Pass,
+        n_rep = n_rep,
+        drug_treatment = drug_treatment,
+        full_sol = full_sol,
+        run_IC = run_IC,
+        IC_n0 = IC_n0,
+        IC_tmax = IC_tmax,
+        IC_treat_on = IC_treat_on,
+        run_colony = run_colony,
+        nCol = nCol,
+        tCol = tCol,
+        ColNmax = ColNmax
+    )
+
     return ExperimentParams(
         Int64(n0),
         t_exp,
