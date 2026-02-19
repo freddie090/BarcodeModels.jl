@@ -377,6 +377,39 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
         return cb1, cb2
     end
 
+    # Build a proxy for switch activity to improve ODE/jump handoff fidelity.
+    function build_switch_activity_proxy(de, idx, b_total_fn, rate_value;
+                                         gamma_factor = false, psi_fn = p -> 0.0)
+        function proxy(integrator)
+            u = integrator.u
+            p = integrator.p
+
+            N = total_population(u)
+            logistic = max(logistic_factor(N, sim_eff.Cc), 0.0)
+
+            b_total = b_total_fn(p)
+            drug_interaction = b_total * p.Dc * u[GAM_INDEX] * (1 - psi_fn(p))
+            b_drug = b_total - drug_interaction
+
+            b_effective = if de === :d
+                b_total
+            elseif de === :b
+                b_drug
+            else
+                max(b_drug, 0.0)
+            end
+
+            activity = u[idx] * rate_value * b_effective
+            if gamma_factor
+                activity *= u[GAM_INDEX]
+            end
+
+            return activity * logistic
+        end
+
+        return proxy
+    end
+
     # Resample populations for a passage bottleneck (mutates state; uses RNG).
     function resample_passage_bottleneck!(integrator, n0)
         curr_nR = round(Int, integrator.u[NR_INDEX])
@@ -432,13 +465,24 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
     )
 
     # Sensitive -> Resistant
+    SR_activity_proxy = build_switch_activity_proxy(
+        de, NS_INDEX, p -> (p.bS_o + p.bS_j), mu
+    )
+
     SR_cb_switch1, SR_cb_switch2 = build_rate_toggle_callbacks(
-        NS_INDEX, mu, :mu_o, :mu_j, sim_eff.epsi
+        NS_INDEX, mu, :mu_o, :mu_j, sim_eff.epsi;
+        activity_fn = SR_activity_proxy
     )
 
     # Resistant -> Sensitive
+    RS_activity_proxy = build_switch_activity_proxy(
+        de, NR_INDEX, p -> (p.bR_o + p.bR_j), sig;
+        psi_fn = p -> p.psi
+    )
+
     RS_cb_switch1, RS_cb_switch2 = build_rate_toggle_callbacks(
-        NR_INDEX, sig, :sig_o, :sig_j, sim_eff.epsi
+        NR_INDEX, sig, :sig_o, :sig_j, sim_eff.epsi;
+        activity_fn = RS_activity_proxy
     )
 
     # Resistant -> Escape
