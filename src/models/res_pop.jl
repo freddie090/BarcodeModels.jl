@@ -52,7 +52,6 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
         treat_offs = sim.treat_offs,
         save_at = sim.save_at,
         treat = treat,
-        n_Pass = sim.n_Pass,
         epsi = sim.epsi
     )
 
@@ -79,10 +78,17 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
         apply_drug_effect_combined
     )
 
-    t_pass_vec = sim_eff.t_Pass isa AbstractVector ? Vector{Float64}(sim_eff.t_Pass) : fill(Float64(sim_eff.t_Pass), sim_eff.n_Pass)
-    if length(t_pass_vec) < sim_eff.n_Pass
-        error("t_Pass length must be >= n_Pass")
+    normalize_t_pass(times) = begin
+        if times isa AbstractVector
+            Vector{Float64}(times)
+        else
+            t_val = Float64(times)
+            t_val < 0.0 ? Float64[] : [t_val]
+        end
     end
+
+    t_pass_vec = normalize_t_pass(sim_eff.t_Pass)
+    n_pass_eff = length(t_pass_vec) + 1
 
     # Helper builders are grouped here to keep repeated rate/callback logic centralized.
 
@@ -552,7 +558,7 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
     nmax_reached(u, t, integrator) = (total_population(integrator.u) >= sim_eff.Nmax)
 
     function handle_nmax!(integrator)
-        if integrator.u[PASS_INDEX] >= sim_eff.n_Pass
+        if integrator.u[PASS_INDEX] >= n_pass_eff
             terminate!(integrator)
         else
             attempt_passage!(integrator, n0; require_enough = false)
@@ -568,7 +574,7 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
 
     function apply_scheduled_passage!(integrator)
         curr_pass = round(Int, integrator.u[PASS_INDEX])
-        if curr_pass < sim_eff.n_Pass
+        if curr_pass < n_pass_eff
             expected_t = t_pass_vec[curr_pass]
             # Only attempt the passage scheduled for the current pass.
             if integrator.t == expected_t
@@ -652,7 +658,7 @@ function simulate_grow_kill(n0::Int64, nS::Float64, nR::Float64, nE::Float64,
     Nmax::Int64, Cc::Int64,
     treat_ons::Vector{Float64}, treat_offs::Vector{Float64},
     Nswitch::Int64; save_at::Float64 = 0.5, treat::Bool = false,
-    n_Pass::Int64 = 1, epsi::Float64 = 100.0,
+    epsi::Float64 = 100.0,
     drug_effect::Union{String, Symbol} = "d")
 
     model = ResPop(ModelParams(
@@ -666,7 +672,7 @@ function simulate_grow_kill(n0::Int64, nS::Float64, nR::Float64, nE::Float64,
         n0 = n0, t0 = t0, tmax = tmax, t_Pass = t_Pass,
         Nmax = Nmax, Cc = Cc, Nswitch = Nswitch,
         treat_ons = treat_ons, treat_offs = treat_offs,
-        save_at = save_at, treat = treat, n_Pass = n_Pass, epsi = epsi
+        save_at = save_at, treat = treat, epsi = epsi
     )
 
     return run_model_core_hybrid(model, state, sim; treat = treat)

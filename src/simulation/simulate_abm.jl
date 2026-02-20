@@ -22,12 +22,14 @@ function _record_abm_outputs!(kmc_out, cells, rep::Int64, curr_P::Int64,
 end
 
 function _passage_times(t_Pass::Union{Float64, Vector{Float64}}, tmax::Float64)
-    if t_Pass isa Vector{Float64}
-        return t_Pass
-    elseif t_Pass < 0.0
-        return [tmax]
+    if t_Pass isa AbstractVector
+        times = sort(unique(Float64.(t_Pass)))
+        any(t -> t <= 0.0, times) && error("All t_Pass values must be > 0.0. Use Float64[] for no passage events.")
+        return times
     else
-        return [t_Pass]
+        t_val = Float64(t_Pass)
+        t_val > 0.0 || error("t_Pass must be > 0.0. Use Float64[] for no passage events.")
+        return [t_val]
     end
 end
 
@@ -46,19 +48,37 @@ function _run_abm_passage_experiment!(
     Nbuff::Int64,
     R_real::String,
     t_frac::Float64,
-    n_Pass::Int64,
     rep::Int64,
     treat::Bool,
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
     K::Int64 = 0
 )
+    progress_tol = 0.1
+
     curr_t = t0
     curr_P = 1
     tP_count = 1
     t_pass_vec = _passage_times(t_Pass, tmax)
+    n_pass_eff = length(t_pass_vec) + 1
 
-    next_t = min(tmax, t_pass_vec[min(tP_count, length(t_pass_vec))])
+    function advance_passage_index!(time_now)
+        while tP_count <= length(t_pass_vec) && t_pass_vec[tP_count] <= (time_now + progress_tol)
+            tP_count += 1
+        end
+    end
+
+    function compute_next_t()
+        if tP_count <= length(t_pass_vec)
+            return min(tmax, t_pass_vec[tP_count])
+        else
+            return tmax
+        end
+    end
+
+    advance_passage_index!(curr_t)
+
+    next_t = compute_next_t()
     cell_lin_df_vec = DataFrame[]
     samp_cell_lin_df_vec = DataFrame[]
     Nvec = Int64[]
@@ -68,7 +88,10 @@ function _run_abm_passage_experiment!(
     tvec = Float64[]
     Pvec = Int64[]
 
-    while curr_t <= tmax
+    while curr_t <= (tmax + progress_tol)
+        curr_t <= (next_t + progress_tol) || error("ABM non-progress invariant failed: curr_t ($(curr_t)) exceeds next_t ($(next_t)).")
+        prev_curr_t = curr_t
+
         sim = ABMSimParams(
             t0 = curr_t,
             tmax = next_t,
@@ -84,15 +107,19 @@ function _run_abm_passage_experiment!(
         )
         state = ResPopABMState(cells)
         kmc_out = run_model_core_abm(model, state, sim; treat = treat)
+        kmc_last_t = last(kmc_out.tvec)
+        isfinite(kmc_last_t) || error("ABM produced a non-finite time value.")
+
+        curr_t_candidate = min(max(kmc_last_t, curr_t), next_t)
 
         live_count = length(alive_cells(cells))
         if last(kmc_out.Nvec) >= Nmax
-            if last(kmc_out.Pvec) >= n_Pass
+            if last(kmc_out.Pvec) >= n_pass_eff
                 _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                      Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                                      sub_sample_cells = sub_sample_cells, K = K,
                                      samp_cell_lin_df_vec = samp_cell_lin_df_vec)
-                curr_t = last(kmc_out.tvec)
+                curr_t = min(max(kmc_last_t, curr_t), tmax)
                 break
             else
                 _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
@@ -106,8 +133,9 @@ function _run_abm_passage_experiment!(
                     cells = sample(live_cells, Nseed, replace = false)
                     extend_with_dead_cells!(cells, Nbuff, make_dead_cell)
                     curr_P += 1
-                    curr_t = last(kmc_out.tvec)
-                    next_t = min(tmax, t_pass_vec[min(tP_count, length(t_pass_vec))])
+                    curr_t = curr_t_candidate
+                    advance_passage_index!(curr_t)
+                    next_t = compute_next_t()
                 end
             end
         elseif live_count == 0
@@ -115,22 +143,22 @@ function _run_abm_passage_experiment!(
                                  Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                                  sub_sample_cells = sub_sample_cells, K = K,
                                  samp_cell_lin_df_vec = samp_cell_lin_df_vec)
-            curr_t = last(kmc_out.tvec)
+            curr_t = min(max(kmc_last_t, curr_t), tmax)
             break
-        elseif last(kmc_out.tvec) >= tmax
+        elseif kmc_last_t >= (tmax - progress_tol)
             _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                  Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                                  sub_sample_cells = sub_sample_cells, K = K,
                                  samp_cell_lin_df_vec = samp_cell_lin_df_vec)
-            curr_t = last(kmc_out.tvec)
+            curr_t = min(max(kmc_last_t, curr_t), tmax)
             break
-        elseif tP_count <= length(t_pass_vec) && last(kmc_out.tvec) >= t_pass_vec[tP_count]
-            if last(kmc_out.Pvec) < n_Pass
+        elseif tP_count <= length(t_pass_vec) && kmc_last_t >= (t_pass_vec[tP_count] - progress_tol)
+            if last(kmc_out.Pvec) < n_pass_eff
                 if live_count < Nseed
                     update_track_vec!(kmc_out, Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec)
-                    tP_count += 1
-                    curr_t = last(kmc_out.tvec)
-                    next_t = min(tmax, t_pass_vec[min(tP_count, length(t_pass_vec))])
+                    curr_t = curr_t_candidate
+                    advance_passage_index!(curr_t)
+                    next_t = compute_next_t()
                 else
                     _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                          Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
@@ -140,15 +168,21 @@ function _run_abm_passage_experiment!(
                     cells = sample(live_cells, Nseed, replace = false)
                     extend_with_dead_cells!(cells, Nbuff, make_dead_cell)
                     curr_P += 1
-                    tP_count += 1
-                    curr_t = last(kmc_out.tvec)
-                    next_t = min(tmax, t_pass_vec[min(tP_count, length(t_pass_vec))])
+                    curr_t = curr_t_candidate
+                    advance_passage_index!(curr_t)
+                    next_t = compute_next_t()
                 end
             end
+        else
+            error("ABM passage loop made no progress. prev_curr_t=$(prev_curr_t), curr_t=$(curr_t), next_t=$(next_t), kmc_last_t=$(kmc_last_t), tP_count=$(tP_count)")
+        end
+
+        if curr_t <= (prev_curr_t + progress_tol) && next_t <= (prev_curr_t + progress_tol)
+            error("ABM passage loop stalled. prev_curr_t=$(prev_curr_t), curr_t=$(curr_t), next_t=$(next_t), kmc_last_t=$(kmc_last_t), tP_count=$(tP_count)")
         end
     end
 
-    for i in 1:n_Pass
+    for i in 1:n_pass_eff
         if i != 1 && length(cell_lin_df_vec) < i
             temp_df = deepcopy(cell_lin_df_vec[i - 1])
             rename!(temp_df, [:bc, Symbol("DT", rep, "_P", i)])
@@ -264,7 +298,6 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
 end
 
 function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwargs...)
-    n_Pass = _kw(kwargs, :n_Pass, exp.n_Pass)
     n_rep = _kw(kwargs, :n_rep, exp.n_rep)
     R_real = _kw(kwargs, :R_real, "b")
     t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
@@ -287,6 +320,8 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     @assert !(run_IC && run_colony) "Cannot run IC and colony assays at the same time."
+
+    n_pass_eff = length(_passage_times(exp.t_Pass, exp.tmax)) + 1
 
     model_eff = _with_drug_effect(model, de)
     rep_cells = _expand_split_cells_abm(model_eff, exp, n_rep;
@@ -346,7 +381,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
                 Nseed = IC_n0, Nmax = exp.Nmax, Cc = exp.Cc,
                 treat_ons = [IC_treat_on], treat_offs = [100.0],
                 dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
-                R_real = R_real, t_frac = t_frac, n_Pass = n_Pass, rep = i,
+                R_real = R_real, t_frac = t_frac, rep = i,
                 treat = true, drug_effect = de
             )
 
@@ -356,7 +391,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
                 Nseed = IC_n0, Nmax = exp.Nmax, Cc = exp.Cc,
                 treat_ons = [IC_treat_on], treat_offs = [100.0],
                 dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
-                R_real = R_real, t_frac = t_frac, n_Pass = n_Pass, rep = i,
+                R_real = R_real, t_frac = t_frac, rep = i,
                 treat = false, drug_effect = de
             )
         end
@@ -369,7 +404,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
             Nseed = nseed_last, Nmax = exp.Nmax, Cc = exp.Cc,
             treat_ons = exp.treat_ons, treat_offs = exp.treat_offs,
             dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
-            R_real = R_real, t_frac = t_frac, n_Pass = n_Pass, rep = i,
+            R_real = R_real, t_frac = t_frac, rep = i,
             treat = drug_treatment, drug_effect = de,
             sub_sample_cells = sub_sample_cells, K = K
         )
@@ -390,8 +425,8 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
         end
 
         if !just_lin
-            t_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_Pass)
-            u_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_Pass)
+            t_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_pass_eff)
+            u_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_pass_eff)
 
             if run_IC
                 t_outs[1] = last(IC_sim_tx1["tvec"])
@@ -413,7 +448,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
                 end
             end
 
-            for j in 1:n_Pass
+            for j in 1:n_pass_eff
                 idx = length(exp.t_keep) + j + (run_IC * 2)
                 if sum(sim["Pvec"] .== j) > 0
                     t_realised_pos = findlast(sim["Pvec"] .== j)

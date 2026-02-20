@@ -177,6 +177,9 @@ function _core_grow_kill_abm!(
     Pvec = Int64[sim.Passage]
 
     while t <= sim.tmax
+        Nt > 0 || error("ABM core loop encountered non-positive live population (Nt=$(Nt)).")
+        any(!c.alive for c in cells) || error("ABM core loop has no available dead slots for births; increase Nbuff.")
+
         live_pos = rand(1:length(cells))
         dead_pos = rand(1:length(cells))
 
@@ -189,7 +192,9 @@ function _core_grow_kill_abm!(
         end
 
         ran = rand(Uniform(0, bdmax))
-        dt = -log(rand()) / (bdmax * Nt)
+        denom = bdmax * Nt
+        denom > 0.0 || error("ABM core loop encountered non-positive time-step denominator (bdmax*Nt=$(denom)).")
+        dt = -log(rand()) / denom
         t += dt
 
         if t >= t_rec

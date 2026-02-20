@@ -1,7 +1,6 @@
 function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwargs...)
     params = model.params
     save_at = _kw(kwargs, :save_at, exp.save_at)
-    n_Pass = _kw(kwargs, :n_Pass, exp.n_Pass)
     n_rep = _kw(kwargs, :n_rep, exp.n_rep)
     drug_treatment = _kw(kwargs, :drug_treatment, exp.drug_treatment)
     full_sol = _kw(kwargs, :full_sol, exp.full_sol)
@@ -17,7 +16,17 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
 
     @assert !(run_IC && run_colony) "Cannot run IC and colony assays at the same time."
 
-    n_pop_obsv = n_rep * ((run_IC * 2) + length(exp.t_keep) + n_Pass) + (run_colony * 1)
+    normalize_t_pass(times) = begin
+        if times isa AbstractVector
+            Vector{Float64}(times)
+        else
+            t_val = Float64(times)
+            t_val < 0.0 ? Float64[] : [t_val]
+        end
+    end
+    n_pass_eff = length(normalize_t_pass(exp.t_Pass)) + 1
+
+    n_pop_obsv = n_rep * ((run_IC * 2) + length(exp.t_keep) + n_pass_eff) + (run_colony * 1)
     model_eff = _with_drug_effect(model, de)
 
     if (params.al + params.sig) > 1.0 || params.psi < 0.0
@@ -44,8 +53,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
                 treat_ons = exp.treat_ons,
                 treat_offs = exp.treat_offs,
                 save_at = save_at,
-                treat = false,
-                n_Pass = 1
+                treat = false
             )
             exp_state = ModelState(nS, nR, nE; gam = 0.0, pass_num = 1)
             exp_sol = run_model_core_hybrid(model_eff, exp_state, exp_sim; treat = false)
@@ -77,8 +85,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
             treat_ons = exp.treat_ons,
             treat_offs = exp.treat_offs,
             save_at = save_at,
-            treat = false,
-            n_Pass = 1
+            treat = false
         )
         exp_state = ModelState(nS, nR, nE; gam = 0.0, pass_num = 1)
         exp_sol = run_model_core_hybrid(model_eff, exp_state, exp_sim; treat = false)
@@ -102,8 +109,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
             treat_ons = exp.treat_ons,
             treat_offs = exp.treat_offs,
             save_at = save_at,
-            treat = false,
-            n_Pass = 1
+            treat = false
         )
         exp_state = ModelState(nS, nR, nE; gam = 0.0, pass_num = 1)
         exp_sol = run_model_core_hybrid(model_eff, exp_state, exp_sim; treat = false)
@@ -166,8 +172,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
                 treat_ons = [1.0],
                 treat_offs = [100.0],
                 save_at = save_at,
-                treat = true,
-                n_Pass = 1
+                treat = true
             )
             col_state = ModelState(sampled_phenos[1], sampled_phenos[2], sampled_phenos[3];
                                    gam = 0.0, pass_num = 1)
@@ -204,8 +209,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
                 treat_ons = [IC_treat_on],
                 treat_offs = [100.0],
                 save_at = save_at,
-                treat = true,
-                n_Pass = 1
+                treat = true
             )
             IC_sol_tx1 = run_model_core_hybrid(model_eff, ic_state, ic_sim; treat = true)
             IC_sol_tx0 = run_model_core_hybrid(model_eff, ic_state, ic_sim; treat = false)
@@ -223,7 +227,6 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
             treat_offs = exp.treat_offs,
             save_at = save_at,
             treat = drug_treatment,
-            n_Pass = n_Pass
         )
         state = ModelState(rep_phenos[1, i], rep_phenos[2, i], rep_phenos[3, i];
                            gam = 0.0, pass_num = 1)
@@ -244,8 +247,8 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
         end
 
         total_pop = map(u -> sum(pop_fun(u)), sol.u)
-        t_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_Pass)
-        u_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_Pass)
+        t_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_pass_eff)
+        u_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_pass_eff)
 
         if run_IC
             t_outs[1] = last(IC_sol_tx1.t)
@@ -266,7 +269,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
             end
         end
 
-        for j in 1:n_Pass
+        for j in 1:n_pass_eff
             if sum(pass_fun.(sol.u) .== j) > 0
                 t_realised_pos = findlast(pass_fun.(sol.u) .== j)
                 idx = length(exp.t_keep) + j + (run_IC * 2)

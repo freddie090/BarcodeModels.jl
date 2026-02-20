@@ -63,13 +63,12 @@ struct SimParams
     Nswitch::Int64
     save_at::Float64
     treat::Bool
-    n_Pass::Int64
     epsi::Float64
 end
 
 function SimParams(; n0, tmax, Nmax, Cc, Nswitch, treat_ons, treat_offs,
-                    t0=0.0, t_Pass=-1.0, save_at=0.5, treat=false,
-                    n_Pass=1, epsi=100.0)
+                    t0=0.0, t_Pass=Float64[], save_at=0.5, treat=false,
+                    epsi=100.0)
     Int64(Cc) > 0 || error("Cc must be > 0.")
 
     return SimParams(
@@ -84,7 +83,6 @@ function SimParams(; n0, tmax, Nmax, Cc, Nswitch, treat_ons, treat_offs,
         Int64(Nswitch),
         Float64(save_at),
         Bool(treat),
-        Int64(n_Pass),
         Float64(epsi)
     )
 end
@@ -128,7 +126,6 @@ struct ExperimentParams
     t_keep::Vector{Float64}
     Nswitch::Int64
     save_at::Float64
-    n_Pass::Int64
     n_rep::Int64
     drug_treatment::Bool
     full_sol::Bool
@@ -144,7 +141,7 @@ end
 
 function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                                     treat_ons, treat_offs, t_keep, Nswitch,
-                                    save_at, n_Pass, n_rep, drug_treatment,
+                                    save_at, n_rep, drug_treatment,
                                     full_sol, run_IC, IC_n0, IC_tmax,
                                     IC_treat_on, run_colony, nCol, tCol, ColNmax)
     n0 isa Integer || error("n0 must be an integer.")
@@ -156,6 +153,11 @@ function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
     tmax > 0 || error("tmax must be > 0.")
 
     (t_Pass isa Real || t_Pass isa AbstractVector{<:Real}) || error("t_Pass must be a number or a vector of numbers.")
+    if t_Pass isa AbstractVector
+        all(x -> x > 0.0, t_Pass) || error("All t_Pass values must be > 0.0. Use Float64[] for no passage events.")
+    else
+        t_Pass > 0.0 || error("t_Pass must be > 0.0. Use Float64[] for no passage events.")
+    end
 
     (Nseed isa Integer || Nseed isa AbstractVector{<:Integer}) || error("Nseed must be an integer or a vector of integers.")
     if Nseed isa Integer
@@ -180,9 +182,6 @@ function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
 
     save_at isa Real || error("save_at must be a number.")
     save_at > 0 || error("save_at must be > 0.")
-
-    n_Pass isa Integer || error("n_Pass must be an integer.")
-    n_Pass > 0 || error("n_Pass must be > 0.")
 
     n_rep isa Integer || error("n_rep must be an integer.")
     n_rep > 0 || error("n_rep must be > 0.")
@@ -215,7 +214,7 @@ end
 
 function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                           treat_ons, treat_offs, t_keep, Nswitch,
-                          save_at=0.5, n_Pass=1, n_rep=4, drug_treatment=true,
+                          save_at=0.5, n_rep=4, drug_treatment=true,
                           full_sol=false, run_IC=false, IC_n0=1000,
                           IC_tmax=4.0, IC_treat_on=1.0, run_colony=false,
                           nCol=1000, tCol=12.0, ColNmax=50)
@@ -232,7 +231,6 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         t_keep = t_keep,
         Nswitch = Nswitch,
         save_at = save_at,
-        n_Pass = n_Pass,
         n_rep = n_rep,
         drug_treatment = drug_treatment,
         full_sol = full_sol,
@@ -259,7 +257,6 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         Vector{Float64}(t_keep),
         Int64(Nswitch),
         Float64(save_at),
-        Int64(n_Pass),
         Int64(n_rep),
         Bool(drug_treatment),
         Bool(full_sol),
