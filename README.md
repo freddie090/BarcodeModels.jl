@@ -31,6 +31,7 @@ The current package versions of these model types are:
 ## ResPop model features
 - Models sensitive (`S`), resistant (`R`), and escape (`E`) phenotypes with logistic population constraint.
 - Supports phenotype switching (`S→R`, `R→S`, `R→E`) with probabilities coupled to cell division events.
+- Uses `Nswitch` for phenotype birth/death ODE↔jump switching and `N_trans_switch` for transition-process ODE↔jump switching.
 - Supports drug effects on death (`:d`), birth (`:b`), or combined (`:c`) dynamics.
 - Supports expansion and bottleneck passage workflows with experimental replicates.
 
@@ -138,6 +139,7 @@ Experiment design shared by both model families.
 | `treat_offs` | `Vector{Float64}` (required) | Treatment off-times. | Vector of numeric times. |
 | `t_keep` | `Vector{Float64}` (required) | Observation times to retain in compact outputs. | Vector of numeric times. |
 | `Nswitch` | `Int64` (required) | Hybrid model ODE/jump switching threshold. | `> 0`. |
+| `N_trans_switch` | `Float64` (`1000.0`) | Hybrid transition-activity threshold for deterministic vs jump switching (`S↔R`, `R→E`). | `> 0`. |
 | `save_at` | `Float64` (`0.5`) | Hybrid solver save interval. | `> 0`. |
 | `n_rep` | `Int64` (`4`) | Number of replicate experiments. | `> 0`. |
 | `drug_treatment` | `Bool` (`true`) | Whether treatment is applied in main experiment runs. | Boolean. |

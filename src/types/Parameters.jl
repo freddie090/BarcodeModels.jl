@@ -63,12 +63,12 @@ struct SimParams
     Nswitch::Int64
     save_at::Float64
     treat::Bool
-    epsi::Float64
+    N_trans_switch::Float64
 end
 
 function SimParams(; n0, tmax, Nmax, Cc, Nswitch, treat_ons, treat_offs,
                     t0=0.0, t_Pass=Float64[], save_at=0.5, treat=false,
-                    epsi=100.0)
+                    N_trans_switch=1000.0)
     Int64(Cc) > 0 || error("Cc must be > 0.")
 
     return SimParams(
@@ -83,7 +83,7 @@ function SimParams(; n0, tmax, Nmax, Cc, Nswitch, treat_ons, treat_offs,
         Int64(Nswitch),
         Float64(save_at),
         Bool(treat),
-        Float64(epsi)
+        Float64(N_trans_switch)
     )
 end
 
@@ -125,6 +125,7 @@ struct ExperimentParams
     treat_offs::Vector{Float64}
     t_keep::Vector{Float64}
     Nswitch::Int64
+    N_trans_switch::Float64
     save_at::Float64
     n_rep::Int64
     drug_treatment::Bool
@@ -141,7 +142,7 @@ end
 
 function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                                     treat_ons, treat_offs, t_keep, Nswitch,
-                                    save_at, n_rep, drug_treatment,
+                                    N_trans_switch, save_at, n_rep, drug_treatment,
                                     full_sol, run_IC, IC_n0, IC_tmax,
                                     IC_treat_on, run_colony, nCol, tCol, ColNmax)
     n0 isa Integer || error("n0 must be an integer.")
@@ -180,6 +181,9 @@ function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
     Nswitch isa Integer || error("Nswitch must be an integer.")
     Nswitch > 0 || error("Nswitch must be > 0.")
 
+    N_trans_switch isa Real || error("N_trans_switch must be a number.")
+    N_trans_switch > 0 || error("N_trans_switch must be > 0.")
+
     save_at isa Real || error("save_at must be a number.")
     save_at > 0 || error("save_at must be > 0.")
 
@@ -214,6 +218,7 @@ end
 
 function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                           treat_ons, treat_offs, t_keep, Nswitch,
+                          N_trans_switch=1000.0,
                           save_at=0.5, n_rep=4, drug_treatment=true,
                           full_sol=false, run_IC=false, IC_n0=1000,
                           IC_tmax=4.0, IC_treat_on=1.0, run_colony=false,
@@ -230,6 +235,7 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         treat_offs = treat_offs,
         t_keep = t_keep,
         Nswitch = Nswitch,
+        N_trans_switch = N_trans_switch,
         save_at = save_at,
         n_rep = n_rep,
         drug_treatment = drug_treatment,
@@ -256,6 +262,7 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         Vector{Float64}(treat_offs),
         Vector{Float64}(t_keep),
         Int64(Nswitch),
+        Float64(N_trans_switch),
         Float64(save_at),
         Int64(n_rep),
         Bool(drug_treatment),

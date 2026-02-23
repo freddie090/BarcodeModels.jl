@@ -52,7 +52,7 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
         treat_offs = sim.treat_offs,
         save_at = sim.save_at,
         treat = treat,
-        epsi = sim.epsi
+        N_trans_switch = sim.N_trans_switch
     )
 
     params = model.params
@@ -356,9 +356,9 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
     end
 
     # ODE/jump toggle callbacks for switch rates.
-    function build_rate_toggle_callbacks(idx, rate_value, rate_o_sym, rate_j_sym, epsi;
+    function build_rate_toggle_callbacks(idx, rate_value, rate_o_sym, rate_j_sym, N_trans_switch;
                                          activity_fn = integrator -> (integrator.u[idx] * rate_value))
-        cond_to_ode(u, t, integrator) = activity_fn(integrator) >= epsi
+        cond_to_ode(u, t, integrator) = activity_fn(integrator) >= N_trans_switch
         function switch_to_ode!(integrator)
             if getproperty(integrator.p, rate_o_sym) == 0.0
                 setproperty!(integrator.p, rate_o_sym, deepcopy(getproperty(integrator.p, rate_j_sym)))
@@ -369,7 +369,7 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
         cb1 = DiscreteCallback(cond_to_ode, switch_to_ode!,
                                save_positions = (false, true))
 
-        cond_to_jump(u, t, integrator) = activity_fn(integrator) < epsi
+        cond_to_jump(u, t, integrator) = activity_fn(integrator) < N_trans_switch
         function switch_to_jump!(integrator)
             if getproperty(integrator.p, rate_j_sym) == 0.0
                 setproperty!(integrator.p, rate_j_sym, deepcopy(getproperty(integrator.p, rate_o_sym)))
@@ -476,7 +476,7 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
     )
 
     SR_cb_switch1, SR_cb_switch2 = build_rate_toggle_callbacks(
-        NS_INDEX, mu, :mu_o, :mu_j, sim_eff.epsi;
+        NS_INDEX, mu, :mu_o, :mu_j, sim_eff.N_trans_switch;
         activity_fn = SR_activity_proxy
     )
 
@@ -487,7 +487,7 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
     )
 
     RS_cb_switch1, RS_cb_switch2 = build_rate_toggle_callbacks(
-        NR_INDEX, sig, :sig_o, :sig_j, sim_eff.epsi;
+        NR_INDEX, sig, :sig_o, :sig_j, sim_eff.N_trans_switch;
         activity_fn = RS_activity_proxy
     )
 
@@ -513,7 +513,7 @@ function run_model_core_hybrid(model::ResPop, state::ModelState, sim::SimParams;
     end
 
     RE_cb_switch1, RE_cb_switch2 = build_rate_toggle_callbacks(
-        NR_INDEX, al, :al_o, :al_j, sim_eff.epsi;
+        NR_INDEX, al, :al_o, :al_j, sim_eff.N_trans_switch;
         activity_fn = RE_activity_proxy
     )
 
@@ -658,7 +658,7 @@ function simulate_grow_kill(n0::Int64, nS::Float64, nR::Float64, nE::Float64,
     Nmax::Int64, Cc::Int64,
     treat_ons::Vector{Float64}, treat_offs::Vector{Float64},
     Nswitch::Int64; save_at::Float64 = 0.5, treat::Bool = false,
-    epsi::Float64 = 100.0,
+    N_trans_switch::Float64 = 1000.0,
     drug_effect::Union{String, Symbol} = "d")
 
     model = ResPop(ModelParams(
@@ -672,7 +672,7 @@ function simulate_grow_kill(n0::Int64, nS::Float64, nR::Float64, nE::Float64,
         n0 = n0, t0 = t0, tmax = tmax, t_Pass = t_Pass,
         Nmax = Nmax, Cc = Cc, Nswitch = Nswitch,
         treat_ons = treat_ons, treat_offs = treat_offs,
-        save_at = save_at, treat = treat, epsi = epsi
+        save_at = save_at, treat = treat, N_trans_switch = N_trans_switch
     )
 
     return run_model_core_hybrid(model, state, sim; treat = treat)
