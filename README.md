@@ -2,38 +2,37 @@
 
 BarcodeModels.jl is a Julia package for simulating barcoded cell population dynamics under growth, phenotypic switching and drug treatment. The models can reproduce key features of lineage tracing experiments in pre-clinical cancer cell systems, including cell barcoding, a mutual expansion period, sampling into replicate flasks and passaging bottlenecks.
 
-## Model types
-BarcodeModels is organized around two model **types**:
+## Model Classes
+BarcodeModels is organized around two model **classes**:
 
-- **Hybrid models**: deterministic ODE dynamics coupled with stochastic jump dynamics.
-- **Agent-based models (ABM)**: explicit single-cell stochastic simulations.
+- **Hybrid**: deterministic ODE dynamics coupled with stochastic jump dynamics.
+- **Agent-Based**: explicit single-cell stochastic simulations (ABM).
 
-Both model types can simulate the same biological process under the same experimental design settings.
-
-## Choosing a Model
-Model selection is determined by the model object you pass into `simulate_experiment`.
+Model-class selection is determined by the model object you pass into `simulate_experiment`.
 
 1. Define shared biological parameters with `ModelParams`.
-2. Instantiate a model class belonging to a model type (hybrid or ABM).
-3. Define experimental design with `ExperimentParams`.
+2. Instantiate a model using either the Hybrid or Agent-Based class.
+3. Define the experimental design with `ExperimentParams`.
 4. Call `simulate_experiment(model, exp)`.
 
-Dispatch is type-based:
-- Passing a hybrid model class routes to the hybrid simulation pipeline.
-- Passing an ABM model class routes to the ABM simulation pipeline.
+Dispatch is class-based:
+- Passing a Hybrid-class model routes to the hybrid simulation pipeline.
+- Passing an Agent-Based-class model routes to the ABM simulation pipeline.
 
-## Current model classes
-The current package versions of these model types are:
+## Current Models
 
-- `ResPop` (hybrid model class)
-- `ResPop_ABM` (agent-based model class)
+### ResPop
+`ResPop` is the current model available in BarcodeModels. It can be run using either model class:
+- Hybrid class: `ResPop(params)`
+- Agent-Based class: `ResPop_ABM(params)`
 
-## ResPop model features
-- Models sensitive (`S`), resistant (`R`), and escape (`E`) phenotypes with logistic population constraint.
+#### ResPop features:
+- Models sensitive (`S`), resistant (`R`), and escape (`E`) phenotypes with logistic growth.
 - Supports phenotype switching (`S→R`, `R→S`, `R→E`) with probabilities coupled to cell division events.
 - Uses `Nswitch` for phenotype birth/death ODE↔jump switching and `N_trans_switch` for transition-process ODE↔jump switching.
-- Supports drug effects on death (`:d`), birth (`:b`), or combined (`:c`) dynamics.
+- Supports drug effects on either death (`:d`), birth (`:b`), or combined (`:c`) dynamics.
 - Supports expansion and bottleneck passage workflows with experimental replicates.
+
 
 ## Experimental design
 
@@ -43,9 +42,31 @@ This allows different models to be compared under the same fixed experimental pa
 
 
 ## Quick start
+
+### 1) Download or clone the code
+
+```bash
+git clone https://github.com/freddie090/BarcodeModels.jl.git
+cd BarcodeModels.jl
+```
+
+### 2) Activate the project environment and install dependencies
+
+```julia
+import Pkg
+Pkg.activate(".")
+Pkg.instantiate()
+```
+
+### 3) Load the package
+
 ```julia
 using BarcodeModels
+```
 
+### 4) Run a minimal experiment
+
+```julia
 params = ModelParams(
     b = 0.893,
     d = 0.200,
