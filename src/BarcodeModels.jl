@@ -1,3 +1,8 @@
+# BarcodeModels Software Version 0
+# Copyright (c) Cancer Research Technology Limited and
+# The Institute of Cancer Research. All rights reserved.
+# Licensed under the BarcodeModels Academic Use Licence (see LICENSE.txt)
+
 module BarcodeModels
 
 using ComponentArrays

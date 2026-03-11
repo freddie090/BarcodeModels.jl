@@ -1,4 +1,4 @@
-BARCODEMODELS SOFTWARE VERSION 1 - SOFTWARE
+BARCODEMODELS SOFTWARE VERSION 0 - SOFTWARE
 
 ACADEMIC USE LICENCE
 
@@ -10,9 +10,9 @@ trading as Cancer Research Horizons, a company registered in England and Wales (
 Cancer Research: Royal Cancer Hospital, a company limited by guarantee (registered number 00534147), 
 a college of the University of London and a charity exempt from registration with registered office at 123 
 Old Brompton Road, London, SW7 3RP (together, Co-Licensors, us or we), and you (Licensee or you) for:
-	*	The BarcodeModels Proprietary Software Version 1, a Bayesian 
-	simulation-based computational method for quantifying drug resistance in cancer  designed for the 
-	analysis of resistance evolution assay data generated from long-term exposure of pre-clinical cell 
+	*	The BarcodeModels Proprietary Software Version 0, a 
+	simulation-based computational method for producing synthetic resistance evolution assay data 
+	generated from long-term exposure of pre-clinical cell 
 	models to a treatment or other selective pressure , and including any improvements, modifications, 
 	adaptations, updates, upgrades and/or new releases provided by Co-Licensors under this Agreement 
 	(Software).
@@ -81,7 +81,7 @@ Except as expressly set out in this Licence or as permitted by any local law, yo
 	(d)	to keep all copies of the Software secure;
 	(e)	to include the copyright notice "Copyright (c) Cancer Research Technology Limited and 
 	The Institute of Cancer Research. All rights Reserved" (also included in the 
-	"BarcodeModels V1" file, 
+	"BarcodeModels.jl" file, 
 	available in the main directory of the Software repository) on all entire and partial 
 	copies of the Software in any form, and not to remove any copyright or other 
 	proprietary notice from the Software;
