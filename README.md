@@ -3,7 +3,7 @@
 BarcodeModels.jl is a Julia package for simulating barcoded cell population dynamics under growth, phenotypic switching and drug treatment. The models can reproduce key features of lineage tracing experiments in pre-clinical cancer cell systems, including cell barcoding, a mutual expansion period, sampling into replicate flasks and passaging bottlenecks.
 
 ## Model Classes
-BarcodeModels is organized around two model **classes**:
+BarcodeModels is organised around two model **classes**:
 
 - **Hybrid**: deterministic ODE dynamics coupled with stochastic jump dynamics.
 - **Agent-Based**: explicit single-cell stochastic simulations (ABM).
