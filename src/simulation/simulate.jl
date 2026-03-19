@@ -1,4 +1,4 @@
-function simulate_experiment(model::Union{HybridModel, ABMModel}, exp::ExperimentParams; kwargs...)
+﻿function simulate_experiment(model::Union{HybridModel, ABMModel}, exp::ExperimentParams; kwargs...)
     if model isa HybridModel
         return simulate_experiment_hybrid(model, exp; kwargs...)
     end
@@ -14,5 +14,12 @@ simulate_experiment_abm(model::ABMModel, exp::ExperimentParams; kwargs...) =
 simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwargs...) =
     _simulate_experiment_hybrid(model, exp; kwargs...)
 
+simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwargs...) =
+    _simulate_experiment_hybrid(model, exp; kwargs...)
+
 simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwargs...) =
     _simulate_experiment_abm(model, exp; kwargs...)
+
+simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwargs...) =
+    _simulate_experiment_abm(model, exp; kwargs...)
+

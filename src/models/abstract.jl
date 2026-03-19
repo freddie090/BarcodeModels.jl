@@ -1,7 +1,7 @@
-"""
+﻿"""
 Abstract supertype for barcode models.
 
-Subtypes must expose a `params::ModelParams` field.
+Subtypes must expose a `params` field whose concrete type is model-specific.
 """
 abstract type AbstractBarcodeModel end
 
@@ -10,3 +10,5 @@ abstract type HybridModel <: AbstractBarcodeModel end
 
 """Agent-based model family."""
 abstract type ABMModel <: AbstractBarcodeModel end
+
+

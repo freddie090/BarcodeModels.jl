@@ -1,18 +1,18 @@
-"""Resistance population agent-based (ABM) model (validates parameters on construction)."""
+﻿"""Resistance population agent-based (ABM) model (validates parameters on construction)."""
 struct ResPop_ABM <: ABMModel
-    params::ModelParams
+    params::ResPopParams
     abm::ABMParams
-    function ResPop_ABM(params::ModelParams, abm::ABMParams)
+    function ResPop_ABM(params::ResPopParams, abm::ABMParams)
         validate_model_params(params)
         new(params, abm)
     end
 end
 
 """Construct a `ResPop_ABM` from parameters and ABM settings."""
-ResPop_ABM(params::ModelParams; abm::ABMParams = ABMParams()) = ResPop_ABM(params, abm)
+ResPop_ABM(params::ResPopParams; abm::ABMParams = ABMParams()) = ResPop_ABM(params, abm)
 
-"""Construct a `ResPop_ABM` from keyword arguments forwarded to `ModelParams`."""
-ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ModelParams(; kwargs...), abm)
+"""Construct a `ResPop_ABM` from keyword arguments forwarded to `ResPopParams`."""
+ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ResPopParams(; kwargs...), abm)
 
 mutable struct CancerCell
     barcode::Float64
@@ -69,7 +69,7 @@ function ABMSimParams(; t0 = 0.0, tmax, Nmax, Cc, treat_ons, treat_offs,
         String(R_real),
         Float64(t_frac),
         Int64(Passage),
-        normalize_drug_effect(drug_effect)
+        normalize_respop_drug_effect(drug_effect)
     )
 end
 
@@ -111,12 +111,12 @@ end
 
 function _core_grow_kill_abm!(
     cells::Vector{CancerCell},
-    params::ModelParams,
+    params::ResPopParams,
     sim::ABMSimParams;
     treat::Bool = false
 )
     @assert 0.0 <= sim.t_frac <= 1.0 "t_frac must be between 0 and 1."
-    @assert params.drug_effect in DRUG_EFFECTS "drug effect can only take :b, :d, or :c."
+    @assert params.drug_effect in RESPOP_DRUG_EFFECTS "drug effect can only take :b, :d, or :c."
     @assert sim.R_real in ["b", "d", "l"] "R_real can only take 'b', 'd' or 'l' as a value."
 
     de = sim.drug_effect
@@ -327,7 +327,7 @@ function grow_kill_lin_kmc!(cells::Vector{CancerCell},
     Passage::Int64 = 1,
     drug_effect::Union{String, Symbol} = :d)
 
-    model = ResPop_ABM(ModelParams(
+    model = ResPop_ABM(ResPopParams(
         b = b, d = d, mu = mu, sig = sig, del = del, al = al,
         Dc = Dc, k = k, psi = psi, drug_effect = drug_effect
     ))
@@ -341,3 +341,5 @@ function grow_kill_lin_kmc!(cells::Vector{CancerCell},
     state = ResPopABMState(cells)
     return run_model_core_abm(model, state, sim; treat = treat)
 end
+
+

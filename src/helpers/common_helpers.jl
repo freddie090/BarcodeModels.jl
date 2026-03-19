@@ -1,18 +1,34 @@
-const GAM_INDEX = 1
-const NS_INDEX = 2
-const NR_INDEX = 3
-const NE_INDEX = 4
-const PASS_INDEX = 5
+﻿const RESPOP_GAM_INDEX = 1
+const RESPOP_NS_INDEX = 2
+const RESPOP_NR_INDEX = 3
+const RESPOP_NE_INDEX = 4
+const RESPOP_PASS_INDEX = 5
 
-total_population(u) = u[NS_INDEX] + u[NR_INDEX] + u[NE_INDEX]
+const RESDMG_GAM_INDEX = 1
+const RESDMG_NS_INDEX = 2
+const RESDMG_ND_INDEX = 3
+const RESDMG_NR_INDEX = 4
+const RESDMG_NE_INDEX = 5
+const RESDMG_PASS_INDEX = 6
+
+respop_total_population(u) = u[RESPOP_NS_INDEX] + u[RESPOP_NR_INDEX] + u[RESPOP_NE_INDEX]
+resdmg_total_population(u) = u[RESDMG_NS_INDEX] + u[RESDMG_ND_INDEX] + u[RESDMG_NR_INDEX] + u[RESDMG_NE_INDEX]
+
 logistic_factor(N::Real, Cc::Real) = 1 - (N / Cc)
-logistic_factor(u::AbstractVector, Cc::Real) = logistic_factor(total_population(u), Cc)
+respop_logistic_factor(u::AbstractVector, Cc::Real) = logistic_factor(respop_total_population(u), Cc)
+resdmg_logistic_factor(u::AbstractVector, Cc::Real) = logistic_factor(resdmg_total_population(u), Cc)
 
-"""Return the population slice (sensitive, resistant, escape)."""
-pop_fun(x) = x[NS_INDEX:NE_INDEX]
+"""Return the ResPop population slice (sensitive, resistant, escape)."""
+respop_pop_fun(x) = x[RESPOP_NS_INDEX:RESPOP_NE_INDEX]
 
-"""Return the passage counter from a state vector."""
-pass_fun(x) = x[PASS_INDEX]
+"""Return the ResPop passage counter from a state vector."""
+respop_pass_fun(x) = x[RESPOP_PASS_INDEX]
+
+"""Return the ResDmg population slice (sensitive, damaged, resistant, escape)."""
+resdmg_pop_fun(x) = x[RESDMG_NS_INDEX:RESDMG_NE_INDEX]
+
+"""Return the ResDmg passage counter from a state vector."""
+resdmg_pass_fun(x) = x[RESDMG_PASS_INDEX]
 
 """Draw multivariate hypergeometric counts (uses RNG)."""
 function multivariate_hypergeometric_draw(population_sizes, num_samples)

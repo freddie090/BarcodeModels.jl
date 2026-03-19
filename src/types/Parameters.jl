@@ -1,14 +1,21 @@
-# Parameter types for models and simulations
+﻿# Parameter types for models and simulations
 
-const DRUG_EFFECTS = (:d, :b, :c)
+const RESPOP_DRUG_EFFECTS = (:d, :b, :c)
+const RESDMG_DRUG_EFFECTS = (:d, :b, :c)
 
-function normalize_drug_effect(drug_effect)
+function normalize_respop_drug_effect(drug_effect)
     de = drug_effect isa AbstractString ? Symbol(drug_effect) : drug_effect
-    de in DRUG_EFFECTS || error("drug_effect must be :d, :b, or :c")
+    de in RESPOP_DRUG_EFFECTS || error("ResPop drug_effect must be :d, :b, or :c")
     return de
 end
 
-struct ModelParams
+function normalize_resdmg_drug_effect(drug_effect)
+    de = drug_effect isa AbstractString ? Symbol(drug_effect) : drug_effect
+    de in RESDMG_DRUG_EFFECTS || error("ResDmg drug_effect must be :d, :b, or :c")
+    return de
+end
+
+struct ResPopParams
     b::Float64
     d::Float64
     rho::Float64
@@ -22,15 +29,39 @@ struct ModelParams
     drug_effect::Symbol
 end
 
-function ModelParams(; b, d, rho=0.0, mu, sig, del, al, Dc, k, psi, drug_effect="d")
-    de = normalize_drug_effect(drug_effect)
-    return ModelParams(
+function ResPopParams(; b, d, rho=0.0, mu, sig, del, al, Dc, k, psi, drug_effect="d")
+    de = normalize_respop_drug_effect(drug_effect)
+    return ResPopParams(
         Float64(b), Float64(d), Float64(rho), Float64(mu), Float64(sig), Float64(del),
         Float64(al), Float64(Dc), Float64(k), Float64(psi), de
     )
 end
 
-function validate_model_params(params::ModelParams)
+struct ResDmgParams
+    b::Float64
+    d::Float64
+    rho::Float64
+    mu::Float64
+    sig::Float64
+    del::Float64
+    al::Float64
+    ome::Float64
+    zet::Float64
+    Dc::Float64
+    k::Float64
+    psi::Float64
+    drug_effect::Symbol
+end
+
+function ResDmgParams(; b, d, rho=0.0, mu, sig, del, al, ome, zet, Dc, k, psi, drug_effect="d")
+    de = normalize_resdmg_drug_effect(drug_effect)
+    return ResDmgParams(
+        Float64(b), Float64(d), Float64(rho), Float64(mu), Float64(sig), Float64(del),
+        Float64(al), Float64(ome), Float64(zet), Float64(Dc), Float64(k), Float64(psi), de
+    )
+end
+
+function validate_model_params(params::ResPopParams)
     0.0 <= params.rho <= 1.0 || error("rho must be between 0 and 1.")
     0.0 <= params.mu <= 1.0 || error("mu must be between 0 and 1.")
     0.0 <= params.sig <= 1.0 || error("sig must be between 0 and 1.")
@@ -38,7 +69,30 @@ function validate_model_params(params::ModelParams)
     0.0 <= params.al <= 1.0 || error("al must be between 0 and 1.")
     0.0 <= params.psi <= 1.0 || error("psi must be between 0 and 1.")
     0.0 <= (params.al + params.sig) <= 1.0 || error("al and sig must not sum to > 1.0")
-    params.drug_effect in DRUG_EFFECTS || error("drug_effect must be :d, :b, or :c")
+    params.drug_effect in RESPOP_DRUG_EFFECTS || error("ResPop drug_effect must be :d, :b, or :c")
+    if params.drug_effect === :b
+        params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
+
+        bR = params.b * (1 - params.del)
+        psi_scale = 1 - params.psi
+        if psi_scale > 0.0
+            params.Dc <= (bR / psi_scale) || error("When drug_effect == :b, Dc*(1-psi) must be <= b*(1-del) to keep resistant birth non-negative. Use drug_effect == :c if stronger drug effects are intended.")
+        end
+    end
+    return params
+end
+
+function validate_model_params(params::ResDmgParams)
+    0.0 <= params.rho <= 1.0 || error("rho must be between 0 and 1.")
+    0.0 <= params.mu <= 1.0 || error("mu must be between 0 and 1.")
+    0.0 <= params.sig <= 1.0 || error("sig must be between 0 and 1.")
+    0.0 <= params.del <= 1.0 || error("del must be between 0 and 1.")
+    0.0 <= params.al <= 1.0 || error("al must be between 0 and 1.")
+    0.0 <= params.psi <= 1.0 || error("psi must be between 0 and 1.")
+    params.ome >= 0.0 || error("ome must be >= 0.")
+    params.zet >= 0.0 || error("zet must be >= 0.")
+    0.0 <= (params.al + params.sig) <= 1.0 || error("al and sig must not sum to > 1.0")
+    params.drug_effect in RESDMG_DRUG_EFFECTS || error("ResDmg drug_effect must be :d, :b, or :c")
     if params.drug_effect === :b
         params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
 
