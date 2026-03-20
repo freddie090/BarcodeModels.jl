@@ -130,6 +130,10 @@ function resdmg_damage_event!(cell_arr::Vector{ResDmgCell},
         throw(ArgumentError("Invalid cell position"))
     end
 
+    if !cell_arr[cell_pos].alive
+        return
+    end
+
     if cell_arr[cell_pos].D
         throw(ArgumentError("Cell is already damaged"))
     end
@@ -154,6 +158,10 @@ function resdmg_repair_event!(cell_arr::Vector{ResDmgCell},
 
     if cell_pos <= 0 || cell_pos > length(cell_arr)
         throw(ArgumentError("Invalid cell position"))
+    end
+
+    if !cell_arr[cell_pos].alive
+        return
     end
 
     if !cell_arr[cell_pos].R && !cell_arr[cell_pos].E && !cell_arr[cell_pos].D
@@ -222,32 +230,28 @@ function _core_grow_kill_abm!(
     end
 
     bmax = params.b
-    dmax = params.d
     omemax = params.ome
     zetmax = params.zet
-    lam = bmax - dmax
+    lam = bmax - params.d
 
-    if params.del > 0.0
-        if sim.R_real == "d"
-            dmax = dmax + (lam * params.del)
-            c_bdmax = bmax + dmax
-        else
-            c_bdmax = bmax + dmax
-        end
+    # Cost-aware no-treatment death envelope (maximum possible death rate without drug).
+    dmax_no_treat = if params.del > 0.0 && sim.R_real == "d"
+        params.d + (lam * params.del)
     else
-        c_bdmax = bmax + dmax
+        params.d
     end
+
+    # Treatment-on death envelope adds maximum drug effect to no-treatment envelope.
+    dmax_treat = dmax_no_treat + params.Dc
 
     drug_concs = nothing
     if treat
         drug_concs = drug_treat_concs(sim.tmax, params.k, params.Dc,
                                       sim.treat_ons, sim.treat_offs, sim.dt_save_at)
-        t_bdmax = bmax + (params.d + params.Dc)
+        bdmax = bmax + dmax_treat
     else
-        t_bdmax = bmax + dmax
+        bdmax = bmax + dmax_no_treat
     end
-
-    bdmax = maximum([c_bdmax, t_bdmax])
     bdzetmax = bdmax + zetmax
     bdzetomemax = bdmax + omemax + zetmax
 
@@ -293,6 +297,7 @@ function _core_grow_kill_abm!(
         curr_rconc = 0.0
         if treat
             curr_rconc = curr_rc(t, drug_concs)
+            dmax_window = curr_rconc > 0.0 ? dmax_treat : dmax_no_treat
             ran_max = curr_rconc > 0.0 ? bdzetomemax : bdzetmax
             ran = rand(Uniform(0, ran_max))
             denom = ran_max * Nt
@@ -300,6 +305,7 @@ function _core_grow_kill_abm!(
             dt = -log(rand()) / denom
             t += dt
         else
+            dmax_window = dmax_no_treat
             ran = rand(Uniform(0, bdzetmax))
             denom = bdzetmax * Nt
             denom > 0.0 || error("ABM core loop encountered non-positive time-step denominator (rate*Nt=$(denom)).")
@@ -400,11 +406,15 @@ function _core_grow_kill_abm!(
             cell_ome = 0.0
         end
 
+        cell_ome <= omemax || error("Calculated cell_ome value $(cell_ome) exceeds maximum possible value $(omemax). Check parameter values and drug effect settings.")
+
         if cells[live_pos].D
             cell_zet = params.zet
         else
             cell_zet = 0.0
         end
+
+        cell_zet <= zetmax || error("Calculated cell_zet value $(cell_zet) exceeds maximum possible value $(zetmax). Check parameter values.")
 
         if ran < cell_b
             if treat
@@ -430,11 +440,11 @@ function _core_grow_kill_abm!(
             Nt -= 1
         end
 
-        if (bmax + dmax) <= ran < (bmax + dmax + cell_zet)
+        if (bmax + dmax_window) <= ran < (bmax + dmax_window + cell_zet)
             resdmg_repair_event!(cells, live_pos, phen_counts)
         end
 
-        if treat && ((bmax + dmax + cell_zet) <= ran < (bmax + dmax + cell_zet + cell_ome))
+        if treat && ((bmax + dmax_window + zetmax) <= ran < (bmax + dmax_window + zetmax + cell_ome))
             resdmg_damage_event!(cells, live_pos, phen_counts)
         end
 
