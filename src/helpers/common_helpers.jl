@@ -6,13 +6,13 @@ const RESPOP_PASS_INDEX = 5
 
 const RESDMG_GAM_INDEX = 1
 const RESDMG_NS_INDEX = 2
-const RESDMG_ND_INDEX = 3
-const RESDMG_NR_INDEX = 4
-const RESDMG_NE_INDEX = 5
+const RESDMG_NDS_INDEX = 3
+const RESDMG_NDR_INDEX = 4
+const RESDMG_NR_INDEX = 5
 const RESDMG_PASS_INDEX = 6
 
 respop_total_population(u) = u[RESPOP_NS_INDEX] + u[RESPOP_NR_INDEX] + u[RESPOP_NE_INDEX]
-resdmg_total_population(u) = u[RESDMG_NS_INDEX] + u[RESDMG_ND_INDEX] + u[RESDMG_NR_INDEX] + u[RESDMG_NE_INDEX]
+resdmg_total_population(u) = u[RESDMG_NS_INDEX] + u[RESDMG_NDS_INDEX] + u[RESDMG_NDR_INDEX] + u[RESDMG_NR_INDEX]
 
 logistic_factor(N::Real, Cc::Real) = 1 - (N / Cc)
 respop_logistic_factor(u::AbstractVector, Cc::Real) = logistic_factor(respop_total_population(u), Cc)
@@ -24,8 +24,8 @@ respop_pop_fun(x) = x[RESPOP_NS_INDEX:RESPOP_NE_INDEX]
 """Return the ResPop passage counter from a state vector."""
 respop_pass_fun(x) = x[RESPOP_PASS_INDEX]
 
-"""Return the ResDmg population slice (sensitive, damaged, resistant, escape)."""
-resdmg_pop_fun(x) = x[RESDMG_NS_INDEX:RESDMG_NE_INDEX]
+"""Return the ResDmg population slice (sensitive, sensitive-damaged, resistant-damaged, resistant)."""
+resdmg_pop_fun(x) = x[RESDMG_NS_INDEX:RESDMG_NR_INDEX]
 
 """Return the ResDmg passage counter from a state vector."""
 resdmg_pass_fun(x) = x[RESDMG_PASS_INDEX]

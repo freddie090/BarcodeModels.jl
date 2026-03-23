@@ -1,4 +1,4 @@
-﻿# Parameter types for models and simulations
+# Parameter types for models and simulations
 
 const RESPOP_DRUG_EFFECTS = (:d, :b, :c)
 const RESDMG_DRUG_EFFECTS = (:d, :b, :c)
@@ -44,20 +44,20 @@ struct ResDmgParams
     mu::Float64
     sig::Float64
     del::Float64
-    al::Float64
     ome::Float64
-    zet::Float64
+    zet_S::Float64
+    zet_R::Float64
     Dc::Float64
     k::Float64
     psi::Float64
     drug_effect::Symbol
 end
 
-function ResDmgParams(; b, d, rho=0.0, mu, sig, del, al, ome, zet, Dc, k, psi, drug_effect="d")
+function ResDmgParams(; b, d, rho=0.0, mu, sig, del, ome, zet_S, zet_R, Dc, k, psi, drug_effect="d")
     de = normalize_resdmg_drug_effect(drug_effect)
     return ResDmgParams(
         Float64(b), Float64(d), Float64(rho), Float64(mu), Float64(sig), Float64(del),
-        Float64(al), Float64(ome), Float64(zet), Float64(Dc), Float64(k), Float64(psi), de
+        Float64(ome), Float64(zet_S), Float64(zet_R), Float64(Dc), Float64(k), Float64(psi), de
     )
 end
 
@@ -87,11 +87,10 @@ function validate_model_params(params::ResDmgParams)
     0.0 <= params.mu <= 1.0 || error("mu must be between 0 and 1.")
     0.0 <= params.sig <= 1.0 || error("sig must be between 0 and 1.")
     0.0 <= params.del <= 1.0 || error("del must be between 0 and 1.")
-    0.0 <= params.al <= 1.0 || error("al must be between 0 and 1.")
     0.0 <= params.psi <= 1.0 || error("psi must be between 0 and 1.")
     params.ome >= 0.0 || error("ome must be >= 0.")
-    params.zet >= 0.0 || error("zet must be >= 0.")
-    0.0 <= (params.al + params.sig) <= 1.0 || error("al and sig must not sum to > 1.0")
+    params.zet_S >= 0.0 || error("zet_S must be >= 0.")
+    params.zet_R >= 0.0 || error("zet_R must be >= 0.")
     params.drug_effect in RESDMG_DRUG_EFFECTS || error("ResDmg drug_effect must be :d, :b, or :c")
     if params.drug_effect === :b
         params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
@@ -331,3 +330,4 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         Int64(ColNmax)
     )
 end
+

@@ -280,35 +280,35 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
     ########################################
 
     # Sensitive -> Resistant
-    function SR_switch!(integrator)
+    function StoR_switch!(integrator)
         integrator.u[RESPOP_NS_INDEX] = integrator.u[RESPOP_NS_INDEX] - 1
         integrator.u[RESPOP_NR_INDEX] = integrator.u[RESPOP_NR_INDEX] + 1
         nothing
     end
 
-    SR_switch_rate = build_switch_rate(de, RESPOP_NS_INDEX, p -> (p.bS_o + p.bS_j), p -> p.mu_j)
-    SR_switch_jump = VariableRateJump(SR_switch_rate, SR_switch!)
+    StoR_switch_rate = build_switch_rate(de, RESPOP_NS_INDEX, p -> (p.bS_o + p.bS_j), p -> p.mu_j)
+    StoR_switch_jump = VariableRateJump(StoR_switch_rate, StoR_switch!)
 
     # Resistant -> Sensitive
-    function RS_switch!(integrator)
+    function RtoS_switch!(integrator)
         integrator.u[RESPOP_NR_INDEX] = integrator.u[RESPOP_NR_INDEX] - 1
         integrator.u[RESPOP_NS_INDEX] = integrator.u[RESPOP_NS_INDEX] + 1
         nothing
     end
 
-    RS_switch_rate = build_switch_rate(de, RESPOP_NR_INDEX, p -> (p.bR_o + p.bR_j), p -> p.sig_j; psi_fn = p -> p.psi)
-    RS_switch_jump = VariableRateJump(RS_switch_rate, RS_switch!)
+    RtoS_switch_rate = build_switch_rate(de, RESPOP_NR_INDEX, p -> (p.bR_o + p.bR_j), p -> p.sig_j; psi_fn = p -> p.psi)
+    RtoS_switch_jump = VariableRateJump(RtoS_switch_rate, RtoS_switch!)
 
     # Resistant -> Escape
-    function RE_switch!(integrator)
+    function RtoE_switch!(integrator)
         integrator.u[RESPOP_NR_INDEX] = integrator.u[RESPOP_NR_INDEX] - 1
         integrator.u[RESPOP_NE_INDEX] = integrator.u[RESPOP_NE_INDEX] + 1
         nothing
     end
 
-    RE_switch_rate = build_switch_rate(de, RESPOP_NR_INDEX, p -> (p.bR_o + p.bR_j), p -> p.al_j;
-                                       gamma_factor = true, psi_fn = p -> p.psi)
-    RE_switch_jump = VariableRateJump(RE_switch_rate, RE_switch!)
+    RtoE_switch_rate = build_switch_rate(de, RESPOP_NR_INDEX, p -> (p.bR_o + p.bR_j), p -> p.al_j;
+                                         gamma_factor = true, psi_fn = p -> p.psi)
+    RtoE_switch_jump = VariableRateJump(RtoE_switch_rate, RtoE_switch!)
 
     ###########
     # Callbacks
@@ -471,28 +471,28 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
     )
 
     # Sensitive -> Resistant
-    SR_activity_proxy = build_switch_activity_proxy(
+    StoR_activity_proxy = build_switch_activity_proxy(
         de, RESPOP_NS_INDEX, p -> (p.bS_o + p.bS_j), mu
     )
 
-    SR_cb_switch1, SR_cb_switch2 = build_rate_toggle_callbacks(
+    StoR_cb_switch1, StoR_cb_switch2 = build_rate_toggle_callbacks(
         RESPOP_NS_INDEX, mu, :mu_o, :mu_j, sim_eff.N_trans_switch;
-        activity_fn = SR_activity_proxy
+        activity_fn = StoR_activity_proxy
     )
 
     # Resistant -> Sensitive
-    RS_activity_proxy = build_switch_activity_proxy(
+    RtoS_activity_proxy = build_switch_activity_proxy(
         de, RESPOP_NR_INDEX, p -> (p.bR_o + p.bR_j), sig;
         psi_fn = p -> p.psi
     )
 
-    RS_cb_switch1, RS_cb_switch2 = build_rate_toggle_callbacks(
+    RtoS_cb_switch1, RtoS_cb_switch2 = build_rate_toggle_callbacks(
         RESPOP_NR_INDEX, sig, :sig_o, :sig_j, sim_eff.N_trans_switch;
-        activity_fn = RS_activity_proxy
+        activity_fn = RtoS_activity_proxy
     )
 
     # Resistant -> Escape
-    RE_activity_proxy = function (integrator)
+    RtoE_activity_proxy = function (integrator)
 
         N = respop_total_population(integrator.u)
         b_total = integrator.p.bR_o + integrator.p.bR_j
@@ -512,9 +512,9 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
         return integrator.u[RESPOP_NR_INDEX] * al * b_effective * gamma * logistic_factor(N, sim_eff.Cc)
     end
 
-    RE_cb_switch1, RE_cb_switch2 = build_rate_toggle_callbacks(
+    RtoE_cb_switch1, RtoE_cb_switch2 = build_rate_toggle_callbacks(
         RESPOP_NR_INDEX, al, :al_o, :al_j, sim_eff.N_trans_switch;
-        activity_fn = RE_activity_proxy
+        activity_fn = RtoE_activity_proxy
     )
 
     # Treatment schedule callbacks (use preset times for robustness).
@@ -597,9 +597,9 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
         S_cb_switch1, S_cb_switch2,
         R_cb_switch1, R_cb_switch2,
         E_cb_switch1, E_cb_switch2,
-        SR_cb_switch1, SR_cb_switch2,
-        RS_cb_switch1, RS_cb_switch2,
-        RE_cb_switch1, RE_cb_switch2,
+        StoR_cb_switch1, StoR_cb_switch2,
+        RtoS_cb_switch1, RtoS_cb_switch2,
+        RtoE_cb_switch1, RtoE_cb_switch2,
         nmax_cb, extinction_cb,
         cb7a, cb7b, cb7c
     ]
@@ -624,9 +624,9 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
                            Sb_jump, Sd_jump,
                            Rb_jump, Rd_jump,
                            Eb_jump, Ed_jump,
-                           SR_switch_jump,
-                           RS_switch_jump,
-                           RE_switch_jump)
+                           StoR_switch_jump,
+                           RtoS_switch_jump,
+                           RtoE_switch_jump)
 
     base_tstops = collect(sim_eff.t0:sim_eff.save_at:sim_eff.tmax)
     event_times = passage_times

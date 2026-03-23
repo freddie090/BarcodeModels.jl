@@ -182,9 +182,9 @@ params_dmg = ResDmgParams(
     mu = 1e-01,
     sig = 0.0,
     del = 0.0,
-    al = 0.0,
     ome = 10.0,
-    zet = 0.01,
+    zet_S = 0.01,
+    zet_R = 0.01,
     Dc = 1.4,
     k = 0.5,
     psi = 0.0,
@@ -218,13 +218,14 @@ Core parameters for the ResPop model family (hybrid and ABM).
 | `drug_effect` | `Symbol` (`:d`) | Drug action mode: death-only (`:d`), birth-only (`:b`), combined (`:c`). | Must be one of `:d`, `:b`, `:c`. |
 
 ### `ResDmgParams`
-Core parameters for the ResDmg model family (hybrid and ABM). Includes all `ResPopParams` fields plus damage/repair controls.
+Core parameters for the ResDmg model family (hybrid and ABM). ResDmg uses `S, DS, DR, R` states and does not include an escape (`E`) transition.
 
 | Parameter | Type (default) | Meaning | Constraints |
 |---|---|---|---|
-| `b, d, rho, mu, sig, del, al, Dc, k, psi, drug_effect` | as in `ResPopParams` | Same meanings as ResPop parameters ($b, d, \rho, \mu, \sigma, \delta, \alpha, D_c, \kappa, \psi$). | Same constraints as `ResPopParams`. |
-| `ome` | `Float64` (required) | Damage transition rate ($\omega$) into `D`. | `ome >= 0`. |
-| `zet` | `Float64` (required) | Repair transition rate ($\zeta$) from `D` to `S`. | `zet >= 0`. |
+| `b, d, rho, mu, sig, del, Dc, k, psi, drug_effect` | as in `ResPopParams` (except `al`) | Same meanings as ResPop parameters where shared ($b, d, \rho, \mu, \sigma, \delta, D_c, \kappa, \psi$). | Shared constraints from `ResPopParams` where applicable. |
+| `ome` | `Float64` (required) | Damage transition rate ($\omega$) into damaged states (`S->DS`, `R->DR`, with `R` damage attenuated by `1-psi`). | `ome >= 0`. |
+| `zet_S` | `Float64` (required) | Repair transition rate ($\zeta_S$) from `DS->S`. | `zet_S >= 0`. |
+| `zet_R` | `Float64` (required) | Repair transition rate ($\zeta_R$) from `DR->R`. | `zet_R >= 0`. |
 
 \
 Additional `drug_effect == :b` requirement:

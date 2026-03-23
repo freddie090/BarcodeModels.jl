@@ -129,9 +129,9 @@ end
         mu = 0.0,
         sig = 0.0,
         del = 0.0,
-        al = 0.0,
         ome = 0.01,
-        zet = 0.01,
+        zet_S = 0.01,
+        zet_R = 0.01,
         Dc = 0.0,
         k = 0.0,
         psi = 0.0,
@@ -146,7 +146,8 @@ end
     @test haskey(result, "t")
     @test haskey(result, "u")
     @test haskey(result, "sol_df")
-    @test "nD" in names(result["sol_df"])
+    @test "nDS" in names(result["sol_df"])
+    @test "nDR" in names(result["sol_df"])
 end
 
 @testset "BarcodeModels integration (ResDmg ABM)" begin
@@ -157,9 +158,9 @@ end
         mu = 0.0,
         sig = 0.0,
         del = 0.0,
-        al = 0.0,
         ome = 0.01,
-        zet = 0.01,
+        zet_S = 0.01,
+        zet_R = 0.01,
         Dc = 0.0,
         k = 0.0,
         psi = 0.0,
@@ -173,6 +174,7 @@ end
     result = simulate_abm_experiment(model)
     @test result !== nothing
     @test haskey(result, "sol_df")
-    @test "nD" in names(result["sol_df"])
+    @test "nDS" in names(result["sol_df"])
+    @test "nDR" in names(result["sol_df"])
 end
 

@@ -1,4 +1,4 @@
-﻿function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwargs...)
+function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwargs...)
     params = model.params
     save_at = _kw(kwargs, :save_at, exp.save_at)
     n_rep = _kw(kwargs, :n_rep, exp.n_rep)
@@ -29,7 +29,7 @@
     n_pop_obsv = n_rep * ((run_IC * 2) + length(exp.t_keep) + n_pass_eff) + (run_colony * 1)
     model_eff = _with_drug_effect(model, de)
 
-    if (params.al + params.sig) > 1.0 || params.psi < 0.0
+    if params.psi < 0.0
         return Dict("t" => repeat([-1.0], n_pop_obsv), "u" => repeat([-1.0], n_pop_obsv))
     end
 
@@ -331,7 +331,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
     n_pop_obsv = n_rep * ((run_IC * 2) + length(exp.t_keep) + n_pass_eff) + (run_colony * 1)
     model_eff = _with_drug_effect(model, de)
 
-    if (params.al + params.sig) > 1.0 || params.psi < 0.0
+    if params.psi < 0.0
         return Dict("t" => repeat([-1.0], n_pop_obsv), "u" => repeat([-1.0], n_pop_obsv))
     end
 
@@ -340,11 +340,11 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
 
         nR = Float64(round(params.rho * exp.n0))
         nS = exp.n0 - nR
-        nD = 0.0
-        nE = 0.0
+        nDS = 0.0
+        nDR = 0.0
 
         for i in 1:(length(exp.t_exp) - 1)
-            N_total = Int64(round(nS + nD + nR + nE))
+            N_total = Int64(round(nS + nDS + nDR + nR))
             exp_sim = SimParams(
                 n0 = N_total,
                 t0 = 0.0,
@@ -359,27 +359,27 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
                 save_at = save_at,
                 treat = false
             )
-            exp_state = ResDmgState(nS, nD, nR, nE; gam = 0.0, pass_num = 1)
+            exp_state = ResDmgState(nS, nDS, nDR, nR; gam = 0.0, pass_num = 1)
             exp_sol = run_model_core_hybrid(model_eff, exp_state, exp_sim; treat = false)
 
             nS = Int64(round(resdmg_pop_fun(last(exp_sol.u))[1]))
-            nD = Int64(round(resdmg_pop_fun(last(exp_sol.u))[2]))
-            nR = Int64(round(resdmg_pop_fun(last(exp_sol.u))[3]))
-            nE = Int64(round(resdmg_pop_fun(last(exp_sol.u))[4]))
+            nDS = Int64(round(resdmg_pop_fun(last(exp_sol.u))[2]))
+            nDR = Int64(round(resdmg_pop_fun(last(exp_sol.u))[3]))
+            nR = Int64(round(resdmg_pop_fun(last(exp_sol.u))[4]))
 
-            total_cells = nS + nD + nR + nE
+            total_cells = nS + nDS + nDR + nR
             if total_cells < exp.Nseed[i]
                 return Dict("t" => repeat([-1.0], n_pop_obsv), "u" => repeat([-1.0], n_pop_obsv))
             end
 
-            counts = multivariate_hypergeometric_draw([nS, nD, nR, nE], exp.Nseed[i])
+            counts = multivariate_hypergeometric_draw([nS, nDS, nDR, nR], exp.Nseed[i])
             nS = Float64(counts[1])
-            nD = Float64(counts[2])
-            nR = Float64(counts[3])
-            nE = Float64(counts[4])
+            nDS = Float64(counts[2])
+            nDR = Float64(counts[3])
+            nR = Float64(counts[4])
         end
 
-        N_total = Int64(round(nS + nD + nR + nE))
+        N_total = Int64(round(nS + nDS + nDR + nR))
         exp_sim = SimParams(
             n0 = N_total,
             t0 = 0.0,
@@ -394,18 +394,18 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
             save_at = save_at,
             treat = false
         )
-        exp_state = ResDmgState(nS, nD, nR, nE; gam = 0.0, pass_num = 1)
+        exp_state = ResDmgState(nS, nDS, nDR, nR; gam = 0.0, pass_num = 1)
         exp_sol = run_model_core_hybrid(model_eff, exp_state, exp_sim; treat = false)
 
         exp_nS = Int64(round(resdmg_pop_fun(last(exp_sol.u))[1]))
-        exp_nD = Int64(round(resdmg_pop_fun(last(exp_sol.u))[2]))
-        exp_nR = Int64(round(resdmg_pop_fun(last(exp_sol.u))[3]))
-        exp_nE = Int64(round(resdmg_pop_fun(last(exp_sol.u))[4]))
+        exp_nDS = Int64(round(resdmg_pop_fun(last(exp_sol.u))[2]))
+        exp_nDR = Int64(round(resdmg_pop_fun(last(exp_sol.u))[3]))
+        exp_nR = Int64(round(resdmg_pop_fun(last(exp_sol.u))[4]))
     elseif (exp.t_exp isa Real) && (exp.Nseed isa Integer)
         nR = Float64(round(params.rho * exp.n0))
         nS = exp.n0 - nR
-        nD = 0.0
-        nE = 0.0
+        nDS = 0.0
+        nDR = 0.0
 
         exp_sim = SimParams(
             n0 = exp.n0,
@@ -421,37 +421,37 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
             save_at = save_at,
             treat = false
         )
-        exp_state = ResDmgState(nS, nD, nR, nE; gam = 0.0, pass_num = 1)
+        exp_state = ResDmgState(nS, nDS, nDR, nR; gam = 0.0, pass_num = 1)
         exp_sol = run_model_core_hybrid(model_eff, exp_state, exp_sim; treat = false)
 
         exp_nS = Int64(round(resdmg_pop_fun(last(exp_sol.u))[1]))
-        exp_nD = Int64(round(resdmg_pop_fun(last(exp_sol.u))[2]))
-        exp_nR = Int64(round(resdmg_pop_fun(last(exp_sol.u))[3]))
-        exp_nE = Int64(round(resdmg_pop_fun(last(exp_sol.u))[4]))
+        exp_nDS = Int64(round(resdmg_pop_fun(last(exp_sol.u))[2]))
+        exp_nDR = Int64(round(resdmg_pop_fun(last(exp_sol.u))[3]))
+        exp_nR = Int64(round(resdmg_pop_fun(last(exp_sol.u))[4]))
     else
         error("t_exp and Nseed must either both be scalars or both be vectors of the same length.")
     end
 
     nseed_last = _nseed_last(exp.Nseed)
-    if (exp_nS + exp_nD + exp_nR + exp_nE) < (nseed_last * n_rep)
+    if (exp_nS + exp_nDS + exp_nDR + exp_nR) < (nseed_last * n_rep)
         return Dict("t" => repeat([-1.0], n_pop_obsv), "u" => repeat([-1.0], n_pop_obsv))
     end
 
     rep_phenos = Array{Float64}(undef, 4, n_rep)
     nS = exp_nS
-    nD = exp_nD
+    nDS = exp_nDS
+    nDR = exp_nDR
     nR = exp_nR
-    nE = exp_nE
     for i in 1:n_rep
-        sampled_counts = multivariate_hypergeometric_draw([nS, nD, nR, nE], nseed_last)
+        sampled_counts = multivariate_hypergeometric_draw([nS, nDS, nDR, nR], nseed_last)
         rep_phenos[1, i] = Float64(sampled_counts[1])
         rep_phenos[2, i] = Float64(sampled_counts[2])
         rep_phenos[3, i] = Float64(sampled_counts[3])
         rep_phenos[4, i] = Float64(sampled_counts[4])
         nS -= sampled_counts[1]
-        nD -= sampled_counts[2]
-        nR -= sampled_counts[3]
-        nE -= sampled_counts[4]
+        nDS -= sampled_counts[2]
+        nDR -= sampled_counts[3]
+        nR -= sampled_counts[4]
     end
 
     fin_t_outs = Float64[]
@@ -464,12 +464,12 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
 
         col_nR = max(Float64(round(params.rho * exp.n0)), 0.0)
         col_nS = max((exp.n0 - col_nR), 0.0)
-        col_nD = 0.0
-        col_nE = 0.0
+        col_nDS = 0.0
+        col_nDR = 0.0
 
         for j in 1:nCol
-            total_cells = max(col_nS + col_nD + col_nR + col_nE, 1e-10)
-            cell_probs = [col_nS, col_nD, col_nR, col_nE] ./ total_cells
+            total_cells = max(col_nS + col_nDS + col_nDR + col_nR, 1e-10)
+            cell_probs = [col_nS, col_nDS, col_nDR, col_nR] ./ total_cells
             if any(cell_probs .< 0) || sum(cell_probs) == 0
                 error("Invalid probability vector: $(cell_probs)")
             end
@@ -512,9 +512,9 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
         if run_IC
             ic_nR = Float64(round(params.rho * IC_n0))
             ic_nS = IC_n0 - ic_nR
-            ic_nD = 0.0
-            ic_nE = 0.0
-            ic_state = ResDmgState(ic_nS, ic_nD, ic_nR, ic_nE; gam = 0.0, pass_num = 1)
+            ic_nDS = 0.0
+            ic_nDR = 0.0
+            ic_state = ResDmgState(ic_nS, ic_nDS, ic_nDR, ic_nR; gam = 0.0, pass_num = 1)
             ic_sim = SimParams(
                 n0 = IC_n0,
                 t0 = 0.0,
@@ -555,13 +555,13 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
             sol_df = DataFrame(
                 t = sol.t,
                 nS = map(x -> x[RESDMG_NS_INDEX], sol.u),
-                nD = map(x -> x[RESDMG_ND_INDEX], sol.u),
+                nDS = map(x -> x[RESDMG_NDS_INDEX], sol.u),
+                nDR = map(x -> x[RESDMG_NDR_INDEX], sol.u),
                 nR = map(x -> x[RESDMG_NR_INDEX], sol.u),
-                nE = map(x -> x[RESDMG_NE_INDEX], sol.u),
                 N = map(x -> x[RESDMG_NS_INDEX], sol.u) .+
-                    map(x -> x[RESDMG_ND_INDEX], sol.u) .+
-                    map(x -> x[RESDMG_NR_INDEX], sol.u) .+
-                    map(x -> x[RESDMG_NE_INDEX], sol.u),
+                    map(x -> x[RESDMG_NDS_INDEX], sol.u) .+
+                    map(x -> x[RESDMG_NDR_INDEX], sol.u) .+
+                    map(x -> x[RESDMG_NR_INDEX], sol.u),
                 rep = i
             )
             push!(sol_dfs, sol_df)
@@ -614,6 +614,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
     end
     return Dict("t" => fin_t_outs, "u" => fin_u_outs)
 end
+
 
 
 

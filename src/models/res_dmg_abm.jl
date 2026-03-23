@@ -16,26 +16,26 @@ ResDmg_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResDmg_ABM(ResDmgParams(
 
 mutable struct ResDmgCell
     barcode::Float64
-    D::Bool
+    DS::Bool
+    DR::Bool
     R::Bool
-    E::Bool
     alive::Bool
 end
 
 mutable struct ResDmgPhenoCounts
     Scount::Int64
-    Dcount::Int64
+    DScount::Int64
+    DRcount::Int64
     Rcount::Int64
-    Ecount::Int64
 end
 
 mutable struct ResDmgGrowOut
     Nvec::Vector{Int64}
     tvec::Vector{Float64}
     Svec::Vector{Int64}
-    Dvec::Vector{Int64}
+    DSvec::Vector{Int64}
+    DRvec::Vector{Int64}
     Rvec::Vector{Int64}
-    Evec::Vector{Int64}
     Pvec::Vector{Int64}
     fin_t::Float64
 end
@@ -82,36 +82,32 @@ end
 
 function resdmg_birth_mutate_event!(cell_arr::Vector{ResDmgCell},
     cell_pos::Int64, birth_pos::Int64,
-    mu::Float64, sig::Float64, al::Float64,
+    mu::Float64, sig::Float64,
     phen_counts::ResDmgPhenoCounts)
 
     if cell_pos <= 0 || cell_pos > length(cell_arr) || birth_pos <= 0 || birth_pos > length(cell_arr)
         throw(ArgumentError("Invalid cell position or birth position"))
     end
 
+    if cell_arr[cell_pos].DS || cell_arr[cell_pos].DR
+        throw(ArgumentError("Cannot perform birth event attempt on a damaged cell."))
+    end
+
     cell_arr[birth_pos].barcode = cell_arr[cell_pos].barcode
-    cell_arr[birth_pos].D = cell_arr[cell_pos].D
+    cell_arr[birth_pos].DS = cell_arr[cell_pos].DS
+    cell_arr[birth_pos].DR = cell_arr[cell_pos].DR
     cell_arr[birth_pos].R = cell_arr[cell_pos].R
-    cell_arr[birth_pos].E = cell_arr[cell_pos].E
     cell_arr[birth_pos].alive = true
 
     mut_p = rand()
 
-    if cell_arr[birth_pos].E
-        phen_counts.Ecount += 1
-    elseif cell_arr[birth_pos].R
+    if cell_arr[birth_pos].R
         if mut_p < sig
             cell_arr[birth_pos].R = false
             phen_counts.Scount += 1
-        elseif sig <= mut_p < (sig + al)
-            cell_arr[birth_pos].R = false
-            cell_arr[birth_pos].E = true
-            phen_counts.Ecount += 1
         else
             phen_counts.Rcount += 1
         end
-    elseif cell_arr[birth_pos].D
-        throw(ArgumentError("Cannot perform birth event attempt on a damaged cell."))
     else
         if mu > mut_p
             cell_arr[birth_pos].R = true
@@ -134,21 +130,19 @@ function resdmg_damage_event!(cell_arr::Vector{ResDmgCell},
         return
     end
 
-    if cell_arr[cell_pos].D
+    if cell_arr[cell_pos].DS || cell_arr[cell_pos].DR
         throw(ArgumentError("Cell is already damaged"))
     end
 
     if cell_arr[cell_pos].R
         cell_arr[cell_pos].R = false
-        cell_arr[cell_pos].D = true
+        cell_arr[cell_pos].DR = true
         phen_counts.Rcount -= 1
-        phen_counts.Dcount += 1
-    elseif cell_arr[cell_pos].E
-        nothing
+        phen_counts.DRcount += 1
     else
-        cell_arr[cell_pos].D = true
+        cell_arr[cell_pos].DS = true
         phen_counts.Scount -= 1
-        phen_counts.Dcount += 1
+        phen_counts.DScount += 1
     end
 end
 
@@ -164,18 +158,17 @@ function resdmg_repair_event!(cell_arr::Vector{ResDmgCell},
         return
     end
 
-    if !cell_arr[cell_pos].R && !cell_arr[cell_pos].E && !cell_arr[cell_pos].D
-        throw(ArgumentError("Cell is already sensitive"))
-    end
-
-    if cell_arr[cell_pos].R
-        nothing
-    elseif cell_arr[cell_pos].E
-        nothing
-    else
-        cell_arr[cell_pos].D = false
-        phen_counts.Dcount -= 1
+    if cell_arr[cell_pos].DS
+        cell_arr[cell_pos].DS = false
+        phen_counts.DScount -= 1
         phen_counts.Scount += 1
+    elseif cell_arr[cell_pos].DR
+        cell_arr[cell_pos].DR = false
+        cell_arr[cell_pos].R = true
+        phen_counts.DRcount -= 1
+        phen_counts.Rcount += 1
+    else
+        return
     end
 end
 
@@ -189,12 +182,12 @@ function resdmg_death_event!(cell_arr::Vector{ResDmgCell},
 
     cell_arr[cell_pos].alive = false
 
-    if cell_arr[cell_pos].E
-        phen_counts.Ecount -= 1
-    elseif cell_arr[cell_pos].R
+    if cell_arr[cell_pos].R
         phen_counts.Rcount -= 1
-    elseif cell_arr[cell_pos].D
-        phen_counts.Dcount -= 1
+    elseif cell_arr[cell_pos].DR
+        phen_counts.DRcount -= 1
+    elseif cell_arr[cell_pos].DS
+        phen_counts.DScount -= 1
     else
         phen_counts.Scount -= 1
     end
@@ -202,14 +195,14 @@ end
 
 function update_track_vec_resdmg!(kmc_out,
     Nvec::Vector{Int64},
-    nS_vec::Vector{Int64}, nD_vec::Vector{Int64}, nR_vec::Vector{Int64}, nE_vec::Vector{Int64},
+    nS_vec::Vector{Int64}, nDS_vec::Vector{Int64}, nDR_vec::Vector{Int64}, nR_vec::Vector{Int64},
     tvec::Vector{Float64}, Pvec::Vector{Int64})
 
     append!(Nvec, kmc_out.Nvec)
     append!(nS_vec, kmc_out.Svec)
-    append!(nD_vec, kmc_out.Dvec)
+    append!(nDS_vec, kmc_out.DSvec)
+    append!(nDR_vec, kmc_out.DRvec)
     append!(nR_vec, kmc_out.Rvec)
-    append!(nE_vec, kmc_out.Evec)
     append!(tvec, kmc_out.tvec)
     append!(Pvec, kmc_out.Pvec)
 end
@@ -230,8 +223,12 @@ function _core_grow_kill_abm!(
     end
 
     bmax = params.b
-    omemax = params.ome
-    zetmax = params.zet
+    omemax_S = params.ome
+    omemax_R = params.ome * (1 - params.psi)
+    zetmax_S = params.zet_S
+    zetmax_R = params.zet_R
+    zetmax = max(zetmax_S, zetmax_R)
+    omemax = max(omemax_S, omemax_R)
     lam = bmax - params.d
 
     # Cost-aware no-treatment death envelope (maximum possible death rate without drug).
@@ -265,18 +262,18 @@ function _core_grow_kill_abm!(
     dead_vec = dead_positions(cells)
 
     Nt = n_alive(cells)
-    Dcount = Int64(sum(cell -> cell.D && cell.alive, cells))
+    DScount = Int64(sum(cell -> cell.DS && cell.alive, cells))
+    DRcount = Int64(sum(cell -> cell.DR && cell.alive, cells))
     Rcount = Int64(sum(cell -> cell.R && cell.alive, cells))
-    Ecount = Int64(sum(cell -> cell.E && cell.alive, cells))
-    Scount = Int64(sum(cell -> !cell.D && !cell.R && !cell.E && cell.alive, cells))
+    Scount = Int64(sum(cell -> !cell.DS && !cell.DR && !cell.R && cell.alive, cells))
 
-    phen_counts = ResDmgPhenoCounts(Scount, Dcount, Rcount, Ecount)
+    phen_counts = ResDmgPhenoCounts(Scount, DScount, DRcount, Rcount)
 
     Nvec = Int64[Nt]
     Svec = Int64[phen_counts.Scount]
-    Dvec = Int64[phen_counts.Dcount]
+    DSvec = Int64[phen_counts.DScount]
+    DRvec = Int64[phen_counts.DRcount]
     Rvec = Int64[phen_counts.Rcount]
-    Evec = Int64[phen_counts.Ecount]
     Pvec = Int64[sim.Passage]
 
     while t <= sim.tmax
@@ -317,9 +314,9 @@ function _core_grow_kill_abm!(
             push!(Nvec, Nt)
             push!(tvec, t)
             push!(Svec, phen_counts.Scount)
-            push!(Dvec, phen_counts.Dcount)
+            push!(DSvec, phen_counts.DScount)
+            push!(DRvec, phen_counts.DRcount)
             push!(Rvec, phen_counts.Rcount)
-            push!(Evec, phen_counts.Ecount)
             push!(Pvec, sim.Passage)
             t_rec += t_rec_change
         end
@@ -333,9 +330,9 @@ function _core_grow_kill_abm!(
             push!(Nvec, Nt)
             push!(tvec, t)
             push!(Svec, phen_counts.Scount)
-            push!(Dvec, phen_counts.Dcount)
+            push!(DSvec, phen_counts.DScount)
+            push!(DRvec, phen_counts.DRcount)
             push!(Rvec, phen_counts.Rcount)
-            push!(Evec, phen_counts.Ecount)
             push!(Pvec, sim.Passage)
             break
         end
@@ -360,25 +357,25 @@ function _core_grow_kill_abm!(
             cell_d = params.d
         end
 
-        if cells[live_pos].D
+        if cells[live_pos].DS || cells[live_pos].DR
             cell_b = 0.0
-            cell_d = params.d + (treat ? params.Dc : 0.0)
+            cell_d = params.d + params.Dc
         elseif treat
             curr_dconc = curr_dc(t, drug_concs)
             if de == :d
-                cell_d += if cells[live_pos].R || cells[live_pos].E
+                cell_d += if cells[live_pos].R
                     curr_dconc * (1 - params.psi)
                 else
                     curr_dconc
                 end
             elseif de == :b
-                cell_b -= if cells[live_pos].R || cells[live_pos].E
+                cell_b -= if cells[live_pos].R
                     curr_dconc * (1 - params.psi)
                 else
                     curr_dconc
                 end
             elseif de == :c
-                cell_b -= if cells[live_pos].R || cells[live_pos].E
+                cell_b -= if cells[live_pos].R
                     curr_dconc * (1 - params.psi)
                 else
                     curr_dconc
@@ -397,7 +394,7 @@ function _core_grow_kill_abm!(
         if treat
             if cells[live_pos].R
                 cell_ome = params.ome * (1 - params.psi) * curr_rconc
-            elseif cells[live_pos].D || cells[live_pos].E
+            elseif cells[live_pos].DS || cells[live_pos].DR
                 cell_ome = 0.0
             else
                 cell_ome = params.ome * curr_rconc
@@ -408,8 +405,10 @@ function _core_grow_kill_abm!(
 
         cell_ome <= omemax || error("Calculated cell_ome value $(cell_ome) exceeds maximum possible value $(omemax). Check parameter values and drug effect settings.")
 
-        if cells[live_pos].D
-            cell_zet = params.zet
+        if cells[live_pos].DS
+            cell_zet = params.zet_S
+        elseif cells[live_pos].DR
+            cell_zet = params.zet_R
         else
             cell_zet = 0.0
         end
@@ -417,16 +416,9 @@ function _core_grow_kill_abm!(
         cell_zet <= zetmax || error("Calculated cell_zet value $(cell_zet) exceeds maximum possible value $(zetmax). Check parameter values.")
 
         if ran < cell_b
-            if treat
-                al_scal = params.al * curr_rconc
-                resdmg_birth_mutate_event!(cells, live_pos, dead_pos,
-                                           params.mu, params.sig, al_scal,
-                                           phen_counts)
-            else
-                resdmg_birth_mutate_event!(cells, live_pos, dead_pos,
-                                           params.mu, params.sig, 0.0,
-                                           phen_counts)
-            end
+            resdmg_birth_mutate_event!(cells, live_pos, dead_pos,
+                                       params.mu, params.sig,
+                                       phen_counts)
 
             live_vec[dead_pos] = 1
             dead_vec[dead_pos] = 0
@@ -452,16 +444,16 @@ function _core_grow_kill_abm!(
             push!(Nvec, Nt)
             push!(tvec, t)
             push!(Svec, phen_counts.Scount)
-            push!(Dvec, phen_counts.Dcount)
+            push!(DSvec, phen_counts.DScount)
+            push!(DRvec, phen_counts.DRcount)
             push!(Rvec, phen_counts.Rcount)
-            push!(Evec, phen_counts.Ecount)
             push!(Pvec, sim.Passage)
             break
         end
     end
 
     fin_t = round(t, digits = 4)
-    return ResDmgGrowOut(Nvec, tvec, Svec, Dvec, Rvec, Evec, Pvec, fin_t)
+    return ResDmgGrowOut(Nvec, tvec, Svec, DSvec, DRvec, Rvec, Pvec, fin_t)
 end
 
 function run_model_core_abm(model::ResDmg_ABM, state::ResDmgABMState, sim::ABMSimParams; treat::Bool = false)
@@ -470,8 +462,8 @@ end
 
 function grow_kill_lin_kmc!(cells::Vector{ResDmgCell},
     b::Float64, d::Float64,
-    mu::Float64, sig::Float64, del::Float64, al::Float64,
-    ome::Float64, zet::Float64,
+    mu::Float64, sig::Float64, del::Float64,
+    ome::Float64, zet_S::Float64, zet_R::Float64,
     Dc::Float64, k::Float64, psi::Float64,
     t0::Float64, tmax::Float64, Nmax::Int64, Cc::Int64,
     treat_ons::Vector{Float64}, treat_offs::Vector{Float64}, dt_save_at::Float64;
@@ -480,8 +472,8 @@ function grow_kill_lin_kmc!(cells::Vector{ResDmgCell},
     drug_effect::Union{String, Symbol} = :d)
 
     model = ResDmg_ABM(ResDmgParams(
-        b = b, d = d, mu = mu, sig = sig, del = del, al = al,
-        ome = ome, zet = zet,
+        b = b, d = d, mu = mu, sig = sig, del = del,
+        ome = ome, zet_S = zet_S, zet_R = zet_R,
         Dc = Dc, k = k, psi = psi, drug_effect = drug_effect
     ))
 

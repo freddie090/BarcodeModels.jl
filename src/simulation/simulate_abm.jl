@@ -496,7 +496,7 @@ end
 
 function _record_resdmg_abm_outputs!(kmc_out, cells, rep::Int64, curr_P::Int64,
     cell_lin_df_vec::Vector{DataFrame},
-    Nvec::Vector{Int64}, nS_vec::Vector{Int64}, nD_vec::Vector{Int64}, nR_vec::Vector{Int64}, nE_vec::Vector{Int64},
+    Nvec::Vector{Int64}, nS_vec::Vector{Int64}, nDS_vec::Vector{Int64}, nDR_vec::Vector{Int64}, nR_vec::Vector{Int64},
     tvec::Vector{Float64}, Pvec::Vector{Int64};
     sub_sample_cells::Bool = false, K::Int64 = 0,
     samp_cell_lin_df_vec::Vector{DataFrame} = DataFrame[])
@@ -514,7 +514,7 @@ function _record_resdmg_abm_outputs!(kmc_out, cells, rep::Int64, curr_P::Int64,
         end
     end
 
-    update_track_vec_resdmg!(kmc_out, Nvec, nS_vec, nD_vec, nR_vec, nE_vec, tvec, Pvec)
+    update_track_vec_resdmg!(kmc_out, Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec)
 end
 
 function _run_abm_passage_experiment!(
@@ -571,9 +571,9 @@ function _run_abm_passage_experiment!(
     samp_cell_lin_df_vec = DataFrame[]
     Nvec = Int64[]
     nS_vec = Int64[]
-    nD_vec = Int64[]
+    nDS_vec = Int64[]
+    nDR_vec = Int64[]
     nR_vec = Int64[]
-    nE_vec = Int64[]
     tvec = Float64[]
     Pvec = Int64[]
 
@@ -605,14 +605,14 @@ function _run_abm_passage_experiment!(
         if last(kmc_out.Nvec) >= Nmax
             if last(kmc_out.Pvec) >= n_pass_eff
                 _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
-                                            Nvec, nS_vec, nD_vec, nR_vec, nE_vec, tvec, Pvec,
+                                            Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                             sub_sample_cells = sub_sample_cells, K = K,
                                             samp_cell_lin_df_vec = samp_cell_lin_df_vec)
                 curr_t = min(max(kmc_last_t, curr_t), tmax)
                 break
             else
                 _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
-                                            Nvec, nS_vec, nD_vec, nR_vec, nE_vec, tvec, Pvec,
+                                            Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                             sub_sample_cells = sub_sample_cells, K = K,
                                             samp_cell_lin_df_vec = samp_cell_lin_df_vec)
                 if live_count < Nseed
@@ -630,14 +630,14 @@ function _run_abm_passage_experiment!(
             end
         elseif live_count == 0
             _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
-                                        Nvec, nS_vec, nD_vec, nR_vec, nE_vec, tvec, Pvec,
+                                        Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                         sub_sample_cells = sub_sample_cells, K = K,
                                         samp_cell_lin_df_vec = samp_cell_lin_df_vec)
             curr_t = min(max(kmc_last_t, curr_t), tmax)
             break
         elseif kmc_last_t >= (tmax - progress_tol)
             _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
-                                        Nvec, nS_vec, nD_vec, nR_vec, nE_vec, tvec, Pvec,
+                                        Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                         sub_sample_cells = sub_sample_cells, K = K,
                                         samp_cell_lin_df_vec = samp_cell_lin_df_vec)
             curr_t = min(max(kmc_last_t, curr_t), tmax)
@@ -650,13 +650,13 @@ function _run_abm_passage_experiment!(
         elseif tP_count <= length(t_pass_vec) && kmc_last_t >= (t_pass_vec[tP_count] - progress_tol)
             if last(kmc_out.Pvec) < n_pass_eff
                 if live_count < Nseed
-                    update_track_vec_resdmg!(kmc_out, Nvec, nS_vec, nD_vec, nR_vec, nE_vec, tvec, Pvec)
+                    update_track_vec_resdmg!(kmc_out, Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec)
                     curr_t = curr_t_candidate
                     advance_passage_index!(curr_t)
                     next_t = compute_next_t()
                 else
                     _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
-                                                Nvec, nS_vec, nD_vec, nR_vec, nE_vec, tvec, Pvec,
+                                                Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                                 sub_sample_cells = sub_sample_cells, K = K,
                                                 samp_cell_lin_df_vec = samp_cell_lin_df_vec)
                     live_cells = alive_cells(cells)
@@ -692,9 +692,9 @@ function _run_abm_passage_experiment!(
         "tvec" => tvec,
         "Pvec" => Pvec,
         "nS_vec" => nS_vec,
-        "nD_vec" => nD_vec,
+        "nDS_vec" => nDS_vec,
+        "nDR_vec" => nDR_vec,
         "nR_vec" => nR_vec,
-        "nE_vec" => nE_vec
     )
     if sub_sample_cells
         out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
@@ -715,7 +715,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
     exp_cells = seed_resdmg_cells(exp.n0, model.params.rho, Nbuff;
                                   skew_lib = skew_lib, bc_unif = bc_unif, Nbc = Nbc)
 
-    expansion_model = ResDmg_ABM(_copy_resdmg_params(model.params; al = 0.0, drug_effect = drug_effect);
+    expansion_model = ResDmg_ABM(_copy_resdmg_params(model.params; drug_effect = drug_effect);
                                  abm = model.abm)
 
     if (exp.t_exp isa Vector{Float64}) && (exp.Nseed isa Vector{Int64})
@@ -910,9 +910,9 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
             t = sim["tvec"],
             N = sim["Nvec"],
             nS = sim["nS_vec"],
-            nD = sim["nD_vec"],
+            nDS = sim["nDS_vec"],
+            nDR = sim["nDR_vec"],
             nR = sim["nR_vec"],
-            nE = sim["nE_vec"],
             rep = i
         )
         push!(sim_dfs, sim_df)

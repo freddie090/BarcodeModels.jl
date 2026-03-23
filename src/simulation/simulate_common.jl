@@ -21,7 +21,7 @@ function _copy_respop_params(params::ResPopParams; rho = params.rho, al = params
     )
 end
 
-function _copy_resdmg_params(params::ResDmgParams; rho = params.rho, al = params.al, drug_effect = params.drug_effect)
+function _copy_resdmg_params(params::ResDmgParams; rho = params.rho, drug_effect = params.drug_effect)
     return ResDmgParams(
         b = params.b,
         d = params.d,
@@ -29,9 +29,9 @@ function _copy_resdmg_params(params::ResDmgParams; rho = params.rho, al = params
         mu = params.mu,
         sig = params.sig,
         del = params.del,
-        al = al,
         ome = params.ome,
-        zet = params.zet,
+        zet_S = params.zet_S,
+        zet_R = params.zet_R,
         Dc = params.Dc,
         k = params.k,
         psi = params.psi,
