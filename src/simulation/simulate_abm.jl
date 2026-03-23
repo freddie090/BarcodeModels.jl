@@ -68,6 +68,10 @@ function _run_abm_passage_experiment!(
         end
     end
 
+    function sync_passage_schedule!()
+        tP_count = max(tP_count, min(curr_P, length(t_pass_vec) + 1))
+    end
+
     function compute_next_t()
         if tP_count <= length(t_pass_vec)
             return min(tmax, t_pass_vec[tP_count])
@@ -134,6 +138,7 @@ function _run_abm_passage_experiment!(
                     extend_with_dead_cells!(cells, Nbuff, make_dead_cell)
                     curr_P += 1
                     curr_t = curr_t_candidate
+                    sync_passage_schedule!()
                     advance_passage_index!(curr_t)
                     next_t = compute_next_t()
                 end
@@ -152,6 +157,11 @@ function _run_abm_passage_experiment!(
                                  samp_cell_lin_df_vec = samp_cell_lin_df_vec)
             curr_t = min(max(kmc_last_t, curr_t), tmax)
             break
+        elseif tP_count < curr_P
+            curr_t = curr_t_candidate
+            sync_passage_schedule!()
+            advance_passage_index!(curr_t)
+            next_t = compute_next_t()
         elseif tP_count <= length(t_pass_vec) && kmc_last_t >= (t_pass_vec[tP_count] - progress_tol)
             if last(kmc_out.Pvec) < n_pass_eff
                 if live_count < Nseed
@@ -169,6 +179,7 @@ function _run_abm_passage_experiment!(
                     extend_with_dead_cells!(cells, Nbuff, make_dead_cell)
                     curr_P += 1
                     curr_t = curr_t_candidate
+                    sync_passage_schedule!()
                     advance_passage_index!(curr_t)
                     next_t = compute_next_t()
                 end
@@ -541,6 +552,10 @@ function _run_abm_passage_experiment!(
         end
     end
 
+    function sync_passage_schedule!()
+        tP_count = max(tP_count, min(curr_P, length(t_pass_vec) + 1))
+    end
+
     function compute_next_t()
         if tP_count <= length(t_pass_vec)
             return min(tmax, t_pass_vec[tP_count])
@@ -608,6 +623,7 @@ function _run_abm_passage_experiment!(
                     extend_with_dead_cells!(cells, Nbuff, make_dead_resdmg_cell)
                     curr_P += 1
                     curr_t = curr_t_candidate
+                    sync_passage_schedule!()
                     advance_passage_index!(curr_t)
                     next_t = compute_next_t()
                 end
@@ -626,6 +642,11 @@ function _run_abm_passage_experiment!(
                                         samp_cell_lin_df_vec = samp_cell_lin_df_vec)
             curr_t = min(max(kmc_last_t, curr_t), tmax)
             break
+        elseif tP_count < curr_P
+            curr_t = curr_t_candidate
+            sync_passage_schedule!()
+            advance_passage_index!(curr_t)
+            next_t = compute_next_t()
         elseif tP_count <= length(t_pass_vec) && kmc_last_t >= (t_pass_vec[tP_count] - progress_tol)
             if last(kmc_out.Pvec) < n_pass_eff
                 if live_count < Nseed
@@ -643,6 +664,7 @@ function _run_abm_passage_experiment!(
                     extend_with_dead_cells!(cells, Nbuff, make_dead_resdmg_cell)
                     curr_P += 1
                     curr_t = curr_t_candidate
+                    sync_passage_schedule!()
                     advance_passage_index!(curr_t)
                     next_t = compute_next_t()
                 end
