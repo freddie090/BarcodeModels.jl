@@ -6,11 +6,11 @@ BarcodeModels.jl is a Julia package for simulating barcoded cell population dyna
 BarcodeModels is organized around two model **classes**:
 
 - **Hybrid**: deterministic ODE dynamics coupled with stochastic jump dynamics.
-- **Agent-Based**: explicit single-cell stochastic simulations (ABM).
+- **Agent-Based**: single-cell stochastic simulations.
 
-Model-class selection is determined by the model object you pass into `simulate_experiment`.
+Model class selection is determined by the model object you pass into `simulate_experiment`.
 
-1. Define shared biological parameters with `ModelParams`.
+1. Define biological parameters with model-specific types (e.g. `ResPopParams`).
 2. Instantiate a model using either the Hybrid or Agent-Based class.
 3. Define the experimental design with `ExperimentParams`.
 4. Call `simulate_experiment(model, exp)`.
@@ -19,19 +19,81 @@ Dispatch is class-based:
 - Passing a Hybrid-class model routes to the hybrid simulation pipeline.
 - Passing an Agent-Based-class model routes to the ABM simulation pipeline.
 
+
 ## Current Models
 
+The package contains different models that encompass different hypotheses for how resistance can evolve.
+
+### Shared Model Features
+
+All models in `BarcodeModels.jl` share a common structure describing phenotype-specific population growth under treatment.
+
+#### 1. Drug uptake and decay  
+Drug exposure is modelled through a time-dependent effective concentration $D_c(t)$, governed by a simple uptake–decay process:
+- `Dc` sets the maximum effective drug concentration ($D_c$)
+- `k` controls the rate of drug uptake and/or decay ($\kappa$) 
+
+Treatment is applied through scheduled on/off windows.
+
+#### 2. Phenotype-specific birth, death and transition events  
+Cells exist in discrete phenotypic states with each phenotype $X$ defined by:
+- Birth rate $b_X$  
+- Death rate $d_X$
+
+Population dynamics arise from:
+- Birth events (cell division)  
+- Death events  
+- Phenotype transition events between states  
+
+
+#### 3. Intrinsic and treatment-dependent transitions  
+Phenotype transitions can occur via two distinct mechanisms:
+- **Intrinsic transitions**: occur independently of treatment and reflect baseline plasticity  
+- **Treatment-dependent transitions**: occur as a function of drug exposure,  modulated by $D_c(t)$  
+
+This allows the models to capture both pre-existing and drug-induced resistance mechanisms.
+
+#### 4. Logistic population growth  
+Population expansion is regulated by a carrying capacity $C_c$, implemented through logistic growth.
+
 ### ResPop
-`ResPop` is the current model available in BarcodeModels. It can be run using either model class:
+`ResPop` models up to three possible phenotypes (`S`, `R`, `E`) and can be run using either model class:
 - Hybrid class: `ResPop(params)`
 - Agent-Based class: `ResPop_ABM(params)`
 
 #### ResPop features:
-- Models sensitive (`S`), resistant (`R`), and escape (`E`) phenotypes with logistic growth.
-- Supports phenotype switching (`S→R`, `R→S`, `R→E`) with probabilities coupled to cell division events.
-- Uses `Nswitch` for phenotype birth/death ODE↔jump switching and `N_trans_switch` for transition-process ODE↔jump switching.
-- Supports drug effects on either death (`:d`), birth (`:b`), or combined (`:c`) dynamics.
-- Supports expansion and bottleneck passage workflows with experimental replicates.
+- Phenotypes: sensitive (`S`), resistant (`R`), and escape (`E`).
+- Phenotype transitions: `S→R`, `R→S`, `R→E`.
+- Transition behaviour:
+    - `S→R` and `R→S` are intrinsic transitions that are independent of treatment.
+    - `R→E` occurs as a function of effective treatment concentration to capture treatment-induced escape transitions.
+- Impact of treatment on phenotype birth/death rates:
+    - All phenotypes are affected by treatment through the selected drug-effect mode (`:d`, `:b`, `:c`).
+        - `:d`: drug increases the death rate
+        - `:b`: drug decreases the birth rate
+        - `:c`: drug decreases the birth rate and then increases the death rate
+    - Phenotypes `R` and `E` experience reduced effect of the drug
+        - e.g. for `:d` drug effect: $d_R = d + (D_C(t) \cdot (1 - \psi))$
+
+### ResDmg
+`ResDmg` models up to four possible phenotypes (`S`, `D`, `R`, `E`) and can be run using either model class:
+- Hybrid class: `ResDmg(params)`
+- Agent-Based class: `ResDmg_ABM(params)`
+
+#### ResDmg features:
+- States: sensitive (`S`), damaged (`D`), resistant (`R`), and escape (`E`).
+- Phenotype transitions: `S→R`, `R→S`, `R→E`, `S→D`, `R→D`, `D→S`.
+- Transition behaviour:
+    - `S→R` and `R→S` are intrinsic transitions that are independent of treatment.
+    - `S→D` and `R→D` capture treatment-induced transitions into the damaged states.
+    - `D→S` (repair) is available once cells are damaged and represents intrinsic recovery dynamics.
+    - `R→E` occurs as a function of effective treatment concentration to capture treatment-induced escape transitions.
+- Impact of treatment on phenotype birth/death rates:
+    - Treatment can increase damage-state occupancy through `S→D` and `R→D` routes.
+    - Damaged cells do not divide and experience elevated death rates.
+    - The resistant phenotype (`R`) experiences a lower probability of drug-induced damage via `psi`.
+
+
 
 
 ## Experimental design
@@ -39,6 +101,14 @@ Dispatch is class-based:
 `BarcodeModels.jl` uses a shared **experimental design layer**, so you can run different model implementations with the same `ExperimentParams` object.
 
 This allows different models to be compared under the same fixed experimental parameters.
+
+Features of the experimental design include:
+- Shared `ExperimentParams` across all model families, enabling direct model-to-model comparisons.
+- Support for scalar or staged expansion (`t_exp`) with matching bottleneck seeding rules (`Nseed`).
+- Scheduled passaging by time (`t_Pass`) and/or cap-triggered passaging (`Nmax`).
+- Replicate experiments (`n_rep`) under identical fixed design settings.
+- Optional treatment windows (`treat_ons`, `treat_offs`) and compact observation outputs (`t_keep`).
+- Optional assay branches (`run_IC`, `run_colony`) where enabled in simulation pipelines.
 
 
 ## Quick start
@@ -67,7 +137,7 @@ using BarcodeModels
 ### 4) Run a minimal experiment
 
 ```julia
-params = ModelParams(
+params = ResPopParams(
     b = 0.893,
     d = 0.200,
     rho = 1e-01,
@@ -89,7 +159,7 @@ exp = ExperimentParams(
     n0 = Int(1e+03),
     t_exp = 6.0,
     tmax = 30.0,
-    t_Pass = Float64[],  # no scheduled passage times
+    t_Pass = Float64[],
     Nseed = Int(1e+03),
     Nmax = Int(5e+04),
     Cc = Int(1e+05),
@@ -103,26 +173,58 @@ exp = ExperimentParams(
 
 result_hybrid = simulate_experiment(model_hybrid, exp)
 result_abm = simulate_experiment(model_abm, exp)
+
+# ResDmg variant
+params_dmg = ResDmgParams(
+    b = 0.893,
+    d = 0.200,
+    rho = 1e-01,
+    mu = 1e-01,
+    sig = 0.0,
+    del = 0.0,
+    al = 0.0,
+    ome = 10.0,
+    zet = 0.01,
+    Dc = 1.4,
+    k = 0.5,
+    psi = 0.0,
+    drug_effect = :c
+)
+
+model_dmg_hybrid = ResDmg(params_dmg)
+model_dmg_abm = ResDmg_ABM(params_dmg)
+
+result_dmg_hybrid = simulate_experiment(model_dmg_hybrid, exp)
+result_dmg_abm = simulate_experiment(model_dmg_abm, exp)
 ```
 
 ## Parameter reference
 
-### `ModelParams`
-Core biological/process parameters shared by hybrid and ABM models.
+### `ResPopParams`
+Core parameters for the ResPop model family (hybrid and ABM).
 
 | Parameter | Type (default) | Meaning | Constraints |
 |---|---|---|---|
-| `b` | `Float64` (required) | Baseline (Sensitive) per-cell birth rate. | Must be valid numeric input. |
-| `d` | `Float64` (required) | Baseline (Sensitive) per-cell death rate. | Must be valid numeric input. |
-| `rho` | `Float64` (`0.0`) | Initial resistant fraction at initial barcoding `(t=0)` | `0 ≤ rho ≤ 1`. |
-| `mu` | `Float64` (required) | `S→R` switching probability (per cell division). | `0 ≤ mu ≤ 1`. |
-| `sig` | `Float64` (required) | `R→S` switching probability (per cell division). | `0 ≤ sig ≤ 1`. |
-| `del` | `Float64` (required) | Resistant fitness cost term. | `0 ≤ del ≤ 1`. |
-| `al` | `Float64` (required) | `R→E` switching probability (per cell division - currently scaled by effective drug concentration). | `0 ≤ al ≤ 1`, and `al + sig ≤ 1`. |
-| `Dc` | `Float64` (required) | Drug effect magnitude scale. | If `drug_effect == :b`, must satisfy additional bounds (see below). |
-| `k` | `Float64` (required) | Drug concentration accumulation/decay rate. | Must be valid numeric input. |
-| `psi` | `Float64` (required) | Drug attenuation factor for resistant/escape phenotypes. | `0 ≤ psi ≤ 1`. |
+| `b` | `Float64` (required) | Baseline (Sensitive) per-cell birth rate ($b$). | Must be valid numeric input. |
+| `d` | `Float64` (required) | Baseline (Sensitive) per-cell death rate ($d$). | Must be valid numeric input. |
+| `rho` | `Float64` (`0.0`) | Initial resistant fraction at initial barcoding `(t=0)` ($\rho$). | `0 ≤ rho ≤ 1`. |
+| `mu` | `Float64` (required) | `S→R` switching probability per division ($\mu$). | `0 ≤ mu ≤ 1`. |
+| `sig` | `Float64` (required) | `R→S` switching probability per division ($\sigma$). | `0 ≤ sig ≤ 1`. |
+| `del` | `Float64` (required) | Resistant fitness-cost term ($\delta$). | `0 ≤ del ≤ 1`. |
+| `al` | `Float64` (required) | `R→E` switching probability per division ($\alpha$). | `0 ≤ al ≤ 1`, and `al + sig ≤ 1`. |
+| `Dc` | `Float64` (required) | Drug effect magnitude scale ($D_c$). | If `drug_effect == :b`, must satisfy additional bounds (see below). |
+| `k` | `Float64` (required) | Drug concentration accumulation/decay rate ($\kappa$). | Must be valid numeric input. |
+| `psi` | `Float64` (required) | Drug attenuation factor for resistant/escape phenotypes ($\psi$). | `0 ≤ psi ≤ 1`. |
 | `drug_effect` | `Symbol` (`:d`) | Drug action mode: death-only (`:d`), birth-only (`:b`), combined (`:c`). | Must be one of `:d`, `:b`, `:c`. |
+
+### `ResDmgParams`
+Core parameters for the ResDmg model family (hybrid and ABM). Includes all `ResPopParams` fields plus damage/repair controls.
+
+| Parameter | Type (default) | Meaning | Constraints |
+|---|---|---|---|
+| `b, d, rho, mu, sig, del, al, Dc, k, psi, drug_effect` | as in `ResPopParams` | Same meanings as ResPop parameters ($b, d, \rho, \mu, \sigma, \delta, \alpha, D_c, \kappa, \psi$). | Same constraints as `ResPopParams`. |
+| `ome` | `Float64` (required) | Damage transition rate ($\omega$) into `D`. | `ome >= 0`. |
+| `zet` | `Float64` (required) | Repair transition rate ($\zeta$) from `D` to `S`. | `zet >= 0`. |
 
 \
 Additional `drug_effect == :b` requirement:
@@ -165,19 +267,14 @@ Experiment design shared by both model families.
 | `n_rep` | `Int64` (`4`) | Number of replicate experiments. | `> 0`. |
 | `drug_treatment` | `Bool` (`true`) | Whether treatment is applied in main experiment runs. | Boolean. |
 | `full_sol` | `Bool` (`false`) | Return full per-time simulated trajectory table. | Boolean. |
-| `run_IC` | `Bool` (`false`) | Run initial-condition assay branch. | Boolean. |
-| `IC_n0` | `Int64` (`1000`) | Initial-condition assay seed size. | `> 0`. |
-| `IC_tmax` | `Float64` (`4.0`) | Initial-condition assay end time. | `> 0`. |
-| `IC_treat_on` | `Float64` (`1.0`) | Initial-condition treatment start time. | Numeric. |
-| `run_colony` | `Bool` (`false`) | Run colony-formation assay branch. | Boolean. |
-| `nCol` | `Int64` (`1000`) | Number of colony simulations. | `> 0`. |
-| `tCol` | `Float64` (`12.0`) | Colony assay end time. | `> 0`. |
-| `ColNmax` | `Int64` (`50`) | Colony endpoint threshold for "successful" growth. | `> 0`. |
 
 ## Key API
-- `ModelParams`: shared biological parameters.
+- `ResPopParams`: ResPop biological parameters.
+- `ResDmgParams`: ResDmg biological parameters.
 - `ResPop`: hybrid ODE+jump model.
+- `ResDmg`: hybrid ODE+jump model with damaged compartment.
 - `ResPop_ABM`: agent-based model.
+- `ResDmg_ABM`: agent-based model with damaged compartment.
 - `ABMParams`: ABM-specific configuration.
 - `ExperimentParams`: experiment-level design parameters.
 - `simulate_experiment(model, exp; kwargs...)`: run simulation for either model family.
@@ -191,7 +288,9 @@ Experiment design shared by both model families.
 - `src/helpers/ode_helpers.jl`: hybrid/ODE helper functions.
 - `src/helpers/abm_helpers.jl`: ABM helper functions.
 - `src/models/res_pop.jl`: hybrid model core simulation logic.
+- `src/models/res_dmg.jl`: hybrid ResDmg model core simulation logic.
 - `src/models/res_pop_abm.jl`: ABM model core simulation logic.
+- `src/models/res_dmg_abm.jl`: ABM ResDmg model core simulation logic.
 - `src/simulation/simulate.jl`: experiment orchestration drivers and API dispatch.
 - `test/runtests.jl`: integration tests.
 
