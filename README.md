@@ -174,6 +174,22 @@ exp = ExperimentParams(
 result_hybrid = simulate_experiment(model_hybrid, exp)
 result_abm = simulate_experiment(model_abm, exp)
 
+# Optional per-replicate horizons (must use no passage events):
+# exp_vec_tmax = ExperimentParams(
+#     n0 = Int(1e+03),
+#     t_exp = 6.0,
+#     tmax = [20.0, 25.0, 30.0, 35.0],
+#     t_Pass = Float64[],
+#     Nseed = Int(1e+03),
+#     Nmax = Int(5e+04),
+#     Cc = Int(1e+05),
+#     treat_ons = Float64[1.0],
+#     treat_offs = Float64[30.0],
+#     t_keep = [5.0],
+#     Nswitch = 500,
+#     n_rep = 4
+# )
+
 # ResDmg variant
 params_dmg = ResDmgParams(
     b = 0.893,
@@ -254,7 +270,7 @@ Experiment design shared by both model families.
 |---|---|---|---|
 | `n0` | `Int64` (required) | Initial seeding population. | `> 0`. |
 | `t_exp` | `Float64` or `Vector{Float64}` (required) | Expansion phase duration(s). | Scalar or vector; if vector, must align with `Nseed` vector usage. |
-| `tmax` | `Float64` (required) | Final experiment time horizon. | `> 0`. |
+| `tmax` | `Float64` or `Vector{Float64}` (required) | Final experiment time horizon(s). | Scalar must be `> 0`; vector values must all be `> 0`, vector length must match effective `n_rep`, and vector mode requires `t_Pass = Float64[]` (no passage events). |
 | `t_Pass` | `Float64` or `Vector{Float64}` (required) | Scheduled passage times. | Strictly `> 0`; use `Float64[]` for no passage events. |
 | `Nseed` | `Int64` or `Vector{Int64}` (required) | Passage bottleneck sample size(s). | Positive; vector form must align with expansion design. |
 | `Nmax` | `Int64` (required) | Population cap trigger for growth/passaging logic. | `> 0` and `Nmax <= Cc`. |

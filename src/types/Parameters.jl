@@ -169,7 +169,7 @@ end
 struct ExperimentParams
     n0::Int64
     t_exp::Union{Float64, Vector{Float64}}
-    tmax::Float64
+    tmax::Union{Float64, Vector{Float64}}
     t_Pass::Union{Float64, Vector{Float64}}
     Nseed::Union{Int64, Vector{Int64}}
     Nmax::Int64
@@ -203,8 +203,12 @@ function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
 
     (t_exp isa Real || t_exp isa AbstractVector{<:Real}) || error("t_exp must be a number or a vector of numbers.")
 
-    tmax isa Real || error("tmax must be a number.")
-    tmax > 0 || error("tmax must be > 0.")
+    (tmax isa Real || tmax isa AbstractVector{<:Real}) || error("tmax must be a number or a vector of numbers.")
+    if tmax isa AbstractVector
+        all(x -> x > 0.0, tmax) || error("All tmax values must be > 0.0.")
+    else
+        tmax > 0 || error("tmax must be > 0.")
+    end
 
     (t_Pass isa Real || t_Pass isa AbstractVector{<:Real}) || error("t_Pass must be a number or a vector of numbers.")
     if t_Pass isa AbstractVector
@@ -303,10 +307,16 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         ColNmax = ColNmax
     )
 
+    if (tmax isa AbstractVector) && !(t_Pass isa AbstractVector && isempty(t_Pass))
+        error("Vector tmax is only supported when t_Pass is an empty vector (no passage events).")
+    end
+
+    tmax_out = tmax isa AbstractVector ? Vector{Float64}(tmax) : Float64(tmax)
+
     return ExperimentParams(
         Int64(n0),
         t_exp,
-        Float64(tmax),
+        tmax_out,
         t_Pass,
         Nseed,
         Int64(Nmax),

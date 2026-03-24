@@ -15,6 +15,8 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
     de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, params.drug_effect))
 
     @assert !(run_IC && run_colony) "Cannot run IC and colony assays at the same time."
+    _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
+    _validate_tmax_length(exp.tmax, n_rep)
 
     normalize_t_pass(times) = begin
         if times isa AbstractVector
@@ -197,6 +199,8 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
     end
 
     for i in 1:n_rep
+        rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
+
         if run_IC
             ic_nR = Float64(round(params.rho * IC_n0))
             ic_nS = IC_n0 - ic_nR
@@ -223,7 +227,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
         sim = SimParams(
             n0 = nseed_last,
             t0 = 0.0,
-            tmax = exp.tmax,
+            tmax = rep_tmax,
             t_Pass = exp.t_Pass,
             Nmax = exp.Nmax,
             Cc = exp.Cc,
@@ -317,6 +321,8 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
     de = normalize_resdmg_drug_effect(_kw(kwargs, :drug_effect, params.drug_effect))
 
     @assert !(run_IC && run_colony) "Cannot run IC and colony assays at the same time."
+    _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
+    _validate_tmax_length(exp.tmax, n_rep)
 
     normalize_t_pass(times) = begin
         if times isa AbstractVector
@@ -509,6 +515,8 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
     end
 
     for i in 1:n_rep
+        rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
+
         if run_IC
             ic_nR = Float64(round(params.rho * IC_n0))
             ic_nS = IC_n0 - ic_nR
@@ -536,7 +544,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
         sim = SimParams(
             n0 = nseed_last,
             t0 = 0.0,
-            tmax = exp.tmax,
+            tmax = rep_tmax,
             t_Pass = exp.t_Pass,
             Nmax = exp.Nmax,
             Cc = exp.Cc,

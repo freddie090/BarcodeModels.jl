@@ -331,8 +331,10 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     @assert !(run_IC && run_colony) "Cannot run IC and colony assays at the same time."
+    _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
+    _validate_tmax_length(exp.tmax, n_rep)
 
-    n_pass_eff = length(_passage_times(exp.t_Pass, exp.tmax)) + 1
+    n_pass_eff = exp.tmax isa AbstractVector ? 1 : (length(_passage_times(exp.t_Pass, Float64(exp.tmax))) + 1)
 
     model_eff = _with_drug_effect(model, de)
     rep_cells = _expand_split_cells_abm(model_eff, exp, n_rep;
@@ -382,6 +384,8 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
 
     nseed_last = _nseed_last(exp.Nseed)
     for i in 1:n_rep
+        rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
+
         if !just_lin && run_IC
             IC_cells_1 = seed_cells(IC_n0, model.params.rho, model.abm.Nbuff)
             IC_cells_0 = seed_cells(IC_n0, model.params.rho, model.abm.Nbuff)
@@ -411,7 +415,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
 
         sim = _run_abm_passage_experiment!(
             model_eff, rep_cells[i];
-            t0 = 0.0, tmax = exp.tmax, t_Pass = exp.t_Pass,
+            t0 = 0.0, tmax = rep_tmax, t_Pass = exp.t_Pass,
             Nseed = nseed_last, Nmax = exp.Nmax, Cc = exp.Cc,
             treat_ons = exp.treat_ons, treat_offs = exp.treat_offs,
             dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
@@ -817,8 +821,10 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     @assert !(run_IC && run_colony) "Cannot run IC and colony assays at the same time."
+    _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
+    _validate_tmax_length(exp.tmax, n_rep)
 
-    n_pass_eff = length(_passage_times(exp.t_Pass, exp.tmax)) + 1
+    n_pass_eff = exp.tmax isa AbstractVector ? 1 : (length(_passage_times(exp.t_Pass, Float64(exp.tmax))) + 1)
 
     model_eff = _with_drug_effect(model, de)
     rep_cells = _expand_split_cells_abm(model_eff, exp, n_rep;
@@ -868,6 +874,8 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
 
     nseed_last = _nseed_last(exp.Nseed)
     for i in 1:n_rep
+        rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
+
         if !just_lin && run_IC
             IC_cells_1 = seed_resdmg_cells(IC_n0, model.params.rho, model.abm.Nbuff)
             IC_cells_0 = seed_resdmg_cells(IC_n0, model.params.rho, model.abm.Nbuff)
@@ -897,7 +905,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
 
         sim = _run_abm_passage_experiment!(
             model_eff, rep_cells[i];
-            t0 = 0.0, tmax = exp.tmax, t_Pass = exp.t_Pass,
+            t0 = 0.0, tmax = rep_tmax, t_Pass = exp.t_Pass,
             Nseed = nseed_last, Nmax = exp.Nmax, Cc = exp.Cc,
             treat_ons = exp.treat_ons, treat_offs = exp.treat_offs,
             dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
