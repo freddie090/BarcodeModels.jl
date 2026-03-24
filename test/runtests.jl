@@ -300,3 +300,21 @@ end
     )
 end
 
+@testset "ResDmg repair-rate ordering" begin
+    @test_throws ErrorException ResDmgParams(
+        b = 1.0,
+        d = 0.1,
+        rho = 0.0,
+        mu = 0.0,
+        sig = 0.0,
+        del = 0.0,
+        ome = 0.01,
+        zet_S = 0.2,
+        zet_R = 0.1,
+        Dc = 0.0,
+        k = 0.0,
+        psi = 0.0,
+        drug_effect = :d
+    )
+end
+

@@ -240,8 +240,8 @@ Core parameters for the ResDmg model family (hybrid and ABM). ResDmg uses `S, DS
 |---|---|---|---|
 | `b, d, rho, mu, sig, del, Dc, k, psi, drug_effect` | as in `ResPopParams` (except `al`) | Same meanings as ResPop parameters where shared ($b, d, \rho, \mu, \sigma, \delta, D_c, \kappa, \psi$). | Shared constraints from `ResPopParams` where applicable. |
 | `ome` | `Float64` (required) | Damage transition rate ($\omega$) into damaged states (`S->DS`, `R->DR`, with `R` damage attenuated by `1-psi`). | `ome >= 0`. |
-| `zet_S` | `Float64` (required) | Repair transition rate ($\zeta_S$) from `DS->S`. | `zet_S >= 0`. |
-| `zet_R` | `Float64` (required) | Repair transition rate ($\zeta_R$) from `DR->R`. | `zet_R >= 0`. |
+| `zet_S` | `Float64` (required) | Repair transition rate ($\zeta_S$) from `DS->S`. | `zet_S >= 0` and `zet_R >= zet_S`. |
+| `zet_R` | `Float64` (required) | Repair transition rate ($\zeta_R$) from `DR->R`. | `zet_R >= 0` and `zet_R >= zet_S`. |
 
 \
 Additional `drug_effect == :b` requirement:

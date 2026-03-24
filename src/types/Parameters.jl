@@ -91,6 +91,7 @@ function validate_model_params(params::ResDmgParams)
     params.ome >= 0.0 || error("ome must be >= 0.")
     params.zet_S >= 0.0 || error("zet_S must be >= 0.")
     params.zet_R >= 0.0 || error("zet_R must be >= 0.")
+    params.zet_R >= params.zet_S || error("zet_R must be >= zet_S for resistant cells to have at least as high repair propensity as sensitive cells.")
     params.drug_effect in RESDMG_DRUG_EFFECTS || error("ResDmg drug_effect must be :d, :b, or :c")
     if params.drug_effect === :b
         params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
