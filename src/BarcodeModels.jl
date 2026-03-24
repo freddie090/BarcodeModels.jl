@@ -32,6 +32,7 @@ include("simulation/simulate_hybrid.jl")
 include("simulation/simulate_abm.jl")
 include("simulation/simulate.jl")
 include("simulation/noise.jl")
+include("plotting/simulation_plots.jl")
 
 export
     RESPOP_DRUG_EFFECTS, RESDMG_DRUG_EFFECTS,
@@ -39,6 +40,7 @@ export
     ResPopState, ResDmgState,
     ABMParams, ExperimentParams,
     ResPop, ResDmg, ResPop_ABM, ResDmg_ABM,
-    simulate_experiment
+    simulate_experiment,
+    plot_simulation_outputs
 
 end
