@@ -3,7 +3,7 @@ struct ResDmg_ABM <: ABMModel
     params::ResDmgParams
     abm::ABMParams
     function ResDmg_ABM(params::ResDmgParams, abm::ABMParams)
-        validate_model_params(params)
+        validate_model_params_strict(params)
         new(params, abm)
     end
 end

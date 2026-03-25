@@ -32,6 +32,9 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
     model_eff = _with_drug_effect(model, de)
 
     if params.psi < 0.0
+        if full_sol
+            error("psi must be between 0 and 1.")
+        end
         return Dict("t" => repeat([-1.0], n_pop_obsv), "u" => repeat([-1.0], n_pop_obsv))
     end
 
@@ -338,6 +341,16 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
     model_eff = _with_drug_effect(model, de)
 
     if params.psi < 0.0
+        if full_sol
+            error("psi must be between 0 and 1.")
+        end
+        return Dict("t" => repeat([-1.0], n_pop_obsv), "u" => repeat([-1.0], n_pop_obsv))
+    end
+
+    if params.zet_S > params.zet_R
+        if full_sol
+            error("zet_R must be >= zet_S for resistant cells to have at least as high repair propensity as sensitive cells.")
+        end
         return Dict("t" => repeat([-1.0], n_pop_obsv), "u" => repeat([-1.0], n_pop_obsv))
     end
 

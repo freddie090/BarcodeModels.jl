@@ -67,7 +67,7 @@ function validate_model_params(params::ResPopParams)
     0.0 <= params.sig <= 1.0 || error("sig must be between 0 and 1.")
     0.0 <= params.del <= 1.0 || error("del must be between 0 and 1.")
     0.0 <= params.al <= 1.0 || error("al must be between 0 and 1.")
-    0.0 <= params.psi <= 1.0 || error("psi must be between 0 and 1.")
+    params.psi <= 1.0 || error("psi must be <= 1.0.")
     0.0 <= (params.al + params.sig) <= 1.0 || error("al and sig must not sum to > 1.0")
     params.drug_effect in RESPOP_DRUG_EFFECTS || error("ResPop drug_effect must be :d, :b, or :c")
     if params.drug_effect === :b
@@ -82,16 +82,21 @@ function validate_model_params(params::ResPopParams)
     return params
 end
 
+function validate_model_params_strict(params::ResPopParams)
+    validate_model_params(params)
+    params.psi >= 0.0 || error("psi must be between 0 and 1.")
+    return params
+end
+
 function validate_model_params(params::ResDmgParams)
     0.0 <= params.rho <= 1.0 || error("rho must be between 0 and 1.")
     0.0 <= params.mu <= 1.0 || error("mu must be between 0 and 1.")
     0.0 <= params.sig <= 1.0 || error("sig must be between 0 and 1.")
     0.0 <= params.del <= 1.0 || error("del must be between 0 and 1.")
-    0.0 <= params.psi <= 1.0 || error("psi must be between 0 and 1.")
+    params.psi <= 1.0 || error("psi must be <= 1.0.")
     params.ome >= 0.0 || error("ome must be >= 0.")
     params.zet_S >= 0.0 || error("zet_S must be >= 0.")
     params.zet_R >= 0.0 || error("zet_R must be >= 0.")
-    params.zet_R >= params.zet_S || error("zet_R must be >= zet_S for resistant cells to have at least as high repair propensity as sensitive cells.")
     params.drug_effect in RESDMG_DRUG_EFFECTS || error("ResDmg drug_effect must be :d, :b, or :c")
     if params.drug_effect === :b
         params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
@@ -102,6 +107,13 @@ function validate_model_params(params::ResDmgParams)
             params.Dc <= (bR / psi_scale) || error("When drug_effect == :b, Dc*(1-psi) must be <= b*(1-del) to keep resistant birth non-negative. Use drug_effect == :c if stronger drug effects are intended.")
         end
     end
+    return params
+end
+
+function validate_model_params_strict(params::ResDmgParams)
+    validate_model_params(params)
+    params.psi >= 0.0 || error("psi must be between 0 and 1.")
+    params.zet_R >= params.zet_S || error("zet_R must be >= zet_S for resistant cells to have at least as high repair propensity as sensitive cells.")
     return params
 end
 

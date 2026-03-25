@@ -300,8 +300,87 @@ end
     )
 end
 
-@testset "ResDmg repair-rate ordering" begin
-    @test_throws ErrorException ResDmgParams(
+@testset "Hybrid invalid-parameter handling for inference mode" begin
+    exp_dummy = ExperimentParams(
+        n0 = 10,
+        t_exp = 2.0,
+        tmax = 2.0,
+        t_Pass = Float64[],
+        Nseed = 10,
+        Nmax = 100,
+        Cc = 100,
+        treat_ons = Float64[],
+        treat_offs = Float64[],
+        t_keep = [2.0],
+        Nswitch = 100,
+        full_sol = false,
+        n_rep = 2
+    )
+
+    respop_invalid_psi = ResPop(ResPopParams(
+        b = 1.0,
+        d = 0.1,
+        rho = 0.0,
+        mu = 0.0,
+        sig = 0.0,
+        del = 0.0,
+        al = 0.0,
+        Dc = 0.0,
+        k = 0.0,
+        psi = -0.1,
+        drug_effect = :d
+    ))
+
+    res_pop_dummy = BarcodeModels.simulate_experiment(respop_invalid_psi, exp_dummy)
+    @test haskey(res_pop_dummy, "t")
+    @test haskey(res_pop_dummy, "u")
+    @test all(<(0.0), res_pop_dummy["t"])
+    @test all(<(0.0), res_pop_dummy["u"])
+
+    @test_throws ErrorException BarcodeModels.simulate_experiment(respop_invalid_psi, exp_dummy; full_sol = true)
+
+    resdmg_invalid = ResDmg(ResDmgParams(
+        b = 1.0,
+        d = 0.1,
+        rho = 0.0,
+        mu = 0.0,
+        sig = 0.0,
+        del = 0.0,
+        ome = 0.01,
+        zet_S = 0.2,
+        zet_R = 0.1,
+        Dc = 0.0,
+        k = 0.0,
+        psi = -0.1,
+        drug_effect = :d
+    ))
+
+    res_dmg_dummy = BarcodeModels.simulate_experiment(resdmg_invalid, exp_dummy)
+    @test haskey(res_dmg_dummy, "t")
+    @test haskey(res_dmg_dummy, "u")
+    @test all(<(0.0), res_dmg_dummy["t"])
+    @test all(<(0.0), res_dmg_dummy["u"])
+
+    @test_throws ErrorException BarcodeModels.simulate_experiment(resdmg_invalid, exp_dummy; full_sol = true)
+end
+
+@testset "ABM strict invalid-parameter validation" begin
+    invalid_respop_params = ResPopParams(
+        b = 1.0,
+        d = 0.1,
+        rho = 0.0,
+        mu = 0.0,
+        sig = 0.0,
+        del = 0.0,
+        al = 0.0,
+        Dc = 0.0,
+        k = 0.0,
+        psi = -0.1,
+        drug_effect = :d
+    )
+    @test_throws ErrorException ResPop_ABM(invalid_respop_params)
+
+    invalid_resdmg_params = ResDmgParams(
         b = 1.0,
         d = 0.1,
         rho = 0.0,
@@ -316,5 +395,6 @@ end
         psi = 0.0,
         drug_effect = :d
     )
+    @test_throws ErrorException ResDmg_ABM(invalid_resdmg_params)
 end
 

@@ -3,7 +3,7 @@ struct ResPop_ABM <: ABMModel
     params::ResPopParams
     abm::ABMParams
     function ResPop_ABM(params::ResPopParams, abm::ABMParams)
-        validate_model_params(params)
+        validate_model_params_strict(params)
         new(params, abm)
     end
 end
