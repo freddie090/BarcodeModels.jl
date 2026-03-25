@@ -26,10 +26,13 @@ include("models/res_pop.jl")
 include("models/res_dmg.jl")
 include("models/res_pop_abm.jl")
 include("models/res_dmg_abm.jl")
+include("models/res_pop_abm_evbc.jl")
+include("models/res_dmg_abm_evbc.jl")
 
 include("simulation/simulate_common.jl")
 include("simulation/simulate_hybrid.jl")
 include("simulation/simulate_abm.jl")
+include("simulation/simulate_abm_evbc.jl")
 include("simulation/simulate.jl")
 include("simulation/noise.jl")
 include("plotting/simulation_plots.jl")
@@ -39,7 +42,7 @@ export
     ResPopParams, ResDmgParams,
     ResPopState, ResDmgState,
     ABMParams, ExperimentParams,
-    ResPop, ResDmg, ResPop_ABM, ResDmg_ABM,
+    ResPop, ResDmg, ResPop_ABM, ResDmg_ABM, ResPop_ABM_EvBC, ResDmg_ABM_EvBC,
     simulate_experiment,
     plot_simulation_outputs
 

@@ -73,6 +73,16 @@ function _with_drug_effect(model::ResDmg_ABM, de::Symbol)
     return ResDmg_ABM(_copy_resdmg_params(model.params; drug_effect = de); abm = model.abm)
 end
 
+function _with_drug_effect(model::ResPop_ABM_EvBC, de::Symbol)
+    de == model.params.drug_effect && return model
+    return ResPop_ABM_EvBC(_copy_respop_params(model.params; drug_effect = de); abm = model.abm)
+end
+
+function _with_drug_effect(model::ResDmg_ABM_EvBC, de::Symbol)
+    de == model.params.drug_effect && return model
+    return ResDmg_ABM_EvBC(_copy_resdmg_params(model.params; drug_effect = de); abm = model.abm)
+end
+
 function _with_drug_effect(model::ResDmg, de::Symbol)
     de == model.params.drug_effect && return model
     params_eff = _copy_resdmg_params(model.params; drug_effect = de)

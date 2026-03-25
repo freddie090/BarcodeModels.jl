@@ -38,7 +38,44 @@ function simulate_abm_experiment(model::ResPop_ABM)
     return BarcodeModels.simulate_experiment(model, exp)
 end
 
+function simulate_abm_experiment(model::ResPop_ABM_EvBC)
+    exp = ExperimentParams(
+        n0 = 5,
+        t_exp = 1.0,
+        tmax = 2.0,
+        t_Pass = Float64[],
+        Nseed = 5,
+        Nmax = 20,
+        Cc = 20,
+        treat_ons = Float64[],
+        treat_offs = Float64[],
+        t_keep = [2.0],
+        Nswitch = 100,
+        n_rep = 1
+    )
+    return BarcodeModels.simulate_experiment(model, exp)
+end
+
 function simulate_abm_experiment(model::ResDmg_ABM)
+    exp = ExperimentParams(
+        n0 = 5,
+        t_exp = 1.0,
+        tmax = 2.0,
+        t_Pass = Float64[],
+        Nseed = 5,
+        Nmax = 20,
+        Cc = 20,
+        treat_ons = Float64[],
+        treat_offs = Float64[],
+        t_keep = [2.0],
+        Nswitch = 100,
+        full_sol = true,
+        n_rep = 1
+    )
+    return BarcodeModels.simulate_experiment(model, exp)
+end
+
+function simulate_abm_experiment(model::ResDmg_ABM_EvBC)
     exp = ExperimentParams(
         n0 = 5,
         t_exp = 1.0,
@@ -214,6 +251,58 @@ end
     @test haskey(result, "sol_df")
     @test "nDS" in names(result["sol_df"])
     @test "nDR" in names(result["sol_df"])
+end
+
+@testset "BarcodeModels integration (ResPop ABM EvBC)" begin
+    params = ResPopParams(
+        b = 1.0,
+        d = 0.1,
+        rho = 0.0,
+        mu = 0.0,
+        sig = 0.0,
+        del = 0.0,
+        al = 0.0,
+        Dc = 0.0,
+        k = 0.0,
+        psi = 0.0,
+        drug_effect = :d
+    )
+
+    abm = ABMParams(Nbuff = 200, t_frac = 0.2, dt_save_at = 0.5)
+    model = ResPop_ABM_EvBC(params; abm = abm)
+    @test model isa ResPop_ABM_EvBC
+
+    result = simulate_abm_experiment(model)
+    @test result !== nothing
+    @test haskey(result, "lineage_df")
+    @test all(in(names(result["lineage_df"])).(["id", "parent_id", "birth_time"]))
+end
+
+@testset "BarcodeModels integration (ResDmg ABM EvBC)" begin
+    params = ResDmgParams(
+        b = 1.0,
+        d = 0.1,
+        rho = 0.0,
+        mu = 0.0,
+        sig = 0.0,
+        del = 0.0,
+        ome = 0.01,
+        zet_S = 0.01,
+        zet_R = 0.01,
+        Dc = 0.0,
+        k = 0.0,
+        psi = 0.0,
+        drug_effect = :d
+    )
+
+    abm = ABMParams(Nbuff = 200, t_frac = 0.2, dt_save_at = 0.5)
+    model = ResDmg_ABM_EvBC(params; abm = abm)
+    @test model isa ResDmg_ABM_EvBC
+
+    result = simulate_abm_experiment(model)
+    @test result !== nothing
+    @test haskey(result, "lineage_df")
+    @test all(in(names(result["lineage_df"])).(["id", "parent_id", "birth_time"]))
 end
 
 @testset "Vector tmax support (single-passage only)" begin

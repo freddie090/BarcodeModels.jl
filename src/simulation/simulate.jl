@@ -23,3 +23,9 @@ simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwargs...) =
 simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwargs...) =
     _simulate_experiment_abm(model, exp; kwargs...)
 
+simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams; kwargs...) =
+    _simulate_experiment_abm(model, exp; kwargs...)
+
+simulate_experiment_abm(model::ResDmg_ABM_EvBC, exp::ExperimentParams; kwargs...) =
+    _simulate_experiment_abm(model, exp; kwargs...)
+
