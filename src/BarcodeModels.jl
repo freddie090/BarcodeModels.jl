@@ -41,6 +41,7 @@ export
     ABMParams, ExperimentParams,
     ResPop, ResDmg, ResPop_ABM, ResDmg_ABM,
     simulate_experiment,
+    model_meas_noise,
     plot_simulation_outputs
 
 end
