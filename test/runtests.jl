@@ -362,6 +362,28 @@ end
     @test all(<(0.0), res_dmg_dummy["u"])
 
     @test_throws ErrorException BarcodeModels.simulate_experiment(resdmg_invalid, exp_dummy; full_sol = true)
+
+    resdmg_no_resistant = ResDmg(ResDmgParams(
+        b = 1.0,
+        d = 0.1,
+        rho = 0.0,
+        mu = 0.0,
+        sig = 0.0,
+        del = 0.0,
+        ome = 0.01,
+        zet_S = 0.2,
+        zet_R = 0.0,
+        Dc = 0.0,
+        k = 0.0,
+        psi = 0.0,
+        drug_effect = :d
+    ))
+
+    res_dmg_no_resistant_out = BarcodeModels.simulate_experiment(resdmg_no_resistant, exp_dummy)
+    @test haskey(res_dmg_no_resistant_out, "t")
+    @test haskey(res_dmg_no_resistant_out, "u")
+    @test !all(<(0.0), res_dmg_no_resistant_out["t"])
+    @test !all(<(0.0), res_dmg_no_resistant_out["u"])
 end
 
 @testset "ABM strict invalid-parameter validation" begin

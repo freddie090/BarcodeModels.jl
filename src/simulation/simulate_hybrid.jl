@@ -347,7 +347,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
         return Dict("t" => repeat([-1.0], n_pop_obsv), "u" => repeat([-1.0], n_pop_obsv))
     end
 
-    if params.zet_S > params.zet_R
+    if (params.zet_S > params.zet_R) && (params.zet_R != 0.0)
         if full_sol
             error("zet_R must be >= zet_S for resistant cells to have at least as high repair propensity as sensitive cells.")
         end
