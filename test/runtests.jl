@@ -276,6 +276,8 @@ end
     @test result !== nothing
     @test haskey(result, "lineage_df")
     @test all(in(names(result["lineage_df"])).(["id", "parent_id", "birth_time"]))
+    @test all(in(names(result["lineage_df"])).(["parent_pheno", "child_pheno"]))
+    @test "barcode" in names(result["lineage_df"])
 end
 
 @testset "BarcodeModels integration (ResDmg ABM EvBC)" begin
@@ -303,6 +305,44 @@ end
     @test result !== nothing
     @test haskey(result, "lineage_df")
     @test all(in(names(result["lineage_df"])).(["id", "parent_id", "birth_time"]))
+    @test all(in(names(result["lineage_df"])).(["parent_pheno", "child_pheno"]))
+    @test "barcode" in names(result["lineage_df"])
+end
+
+@testset "Lineage utilities" begin
+    lineage_df = DataFrame(
+        id = Int64[1, 2, 3, 4],
+        parent_id = Int64[0, 1, 1, 3],
+        birth_time = Float64[0.0, 1.0, 1.2, 2.0],
+        parent_pheno = ["ROOT", "S", "S", "R"],
+        child_pheno = ["S", "S", "R", "R"],
+        barcode = Float64[10.0, 10.0, 10.0, 10.0],
+        rep = Int64[1, 1, 1, 1]
+    )
+
+    edges = build_phylogeny(lineage_df)
+    @test length(edges) == 3
+    @test (1, 2) in edges
+    @test (1, 3) in edges
+    @test (3, 4) in edges
+
+    children = build_tree(lineage_df)
+    @test haskey(children, 1)
+    @test children[1] == Int64[2, 3]
+    @test children[3] == Int64[4]
+
+    newick = lineage_to_newick(lineage_df, 1)
+    @test newick == "(2,(4)3)1;"
+    @test population_to_newick(lineage_df, 1) == newick
+
+    meta_df = lineage_node_metadata(lineage_df)
+    @test all(in(names(meta_df)).(["id", "parent_id", "birth_time", "parent_pheno", "child_pheno", "barcode", "rep"]))
+    @test nrow(meta_df) == nrow(lineage_df)
+
+    edge_bc_df = lineage_edge_barcodes(lineage_df)
+    @test nrow(edge_bc_df) == 3
+    @test all(in(names(edge_bc_df)).(["parent_id", "id", "parent_barcode", "child_barcode"]))
+    @test all(edge_bc_df.parent_barcode .== edge_bc_df.child_barcode)
 end
 
 @testset "Vector tmax support (single-passage only)" begin

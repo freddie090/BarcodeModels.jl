@@ -22,6 +22,7 @@ include("models/abstract.jl")
 include("helpers/common_helpers.jl")
 include("helpers/ode_helpers.jl")
 include("helpers/abm_helpers.jl")
+include("helpers/lineage_utils.jl")
 include("models/res_pop.jl")
 include("models/res_dmg.jl")
 include("models/res_pop_abm.jl")
@@ -43,6 +44,7 @@ export
     ResPopState, ResDmgState,
     ABMParams, ExperimentParams,
     ResPop, ResDmg, ResPop_ABM, ResDmg_ABM, ResPop_ABM_EvBC, ResDmg_ABM_EvBC,
+    build_phylogeny, build_tree, to_newick, lineage_to_newick, population_to_newick, lineage_node_metadata, lineage_edge_barcodes,
     simulate_experiment,
     plot_simulation_outputs
 

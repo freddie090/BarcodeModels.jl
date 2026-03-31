@@ -33,6 +33,17 @@ end
 
 make_dead_resdmg_cell_evbc() = ResDmgCellEvBC(0.0, false, false, false, false, 0, 0, -1.0)
 
+function _resdmg_pheno_label(cell::ResDmgCellEvBC)
+    if cell.DS
+        return "DS"
+    elseif cell.DR
+        return "DR"
+    elseif cell.R
+        return "R"
+    end
+    return "S"
+end
+
 function _init_lineage_state!(cells::Vector{ResDmgCellEvBC}, t0::Float64 = 0.0)
     lineage_records = LineageRecord[]
     next_cell_id = Int64(1)
@@ -41,7 +52,7 @@ function _init_lineage_state!(cells::Vector{ResDmgCellEvBC}, t0::Float64 = 0.0)
             cells[i].id = next_cell_id
             cells[i].parent_id = 0
             cells[i].birth_time = t0
-            push!(lineage_records, LineageRecord(next_cell_id, 0, t0))
+            push!(lineage_records, LineageRecord(next_cell_id, 0, t0, "ROOT", _resdmg_pheno_label(cells[i]), cells[i].barcode))
             next_cell_id += 1
         else
             cells[i].id = 0
@@ -82,11 +93,11 @@ function resdmg_birth_mutate_event_evbc!(state::ResDmgABMEvBCState,
     cell_arr[birth_pos].DR = cell_arr[cell_pos].DR
     cell_arr[birth_pos].R = cell_arr[cell_pos].R
     cell_arr[birth_pos].alive = true
-    cell_arr[birth_pos].id = state.next_cell_id
+    child_id = state.next_cell_id
+    cell_arr[birth_pos].id = child_id
     cell_arr[birth_pos].parent_id = cell_arr[cell_pos].id
     cell_arr[birth_pos].birth_time = curr_t
-    push!(state.lineage_records, LineageRecord(state.next_cell_id, cell_arr[cell_pos].id, curr_t))
-    state.next_cell_id += 1
+    parent_pheno = _resdmg_pheno_label(cell_arr[cell_pos])
 
     mut_p = rand()
 
@@ -105,6 +116,10 @@ function resdmg_birth_mutate_event_evbc!(state::ResDmgABMEvBCState,
             phen_counts.Scount += 1
         end
     end
+
+    child_pheno = _resdmg_pheno_label(cell_arr[birth_pos])
+    push!(state.lineage_records, LineageRecord(child_id, cell_arr[cell_pos].id, curr_t, parent_pheno, child_pheno, cell_arr[birth_pos].barcode))
+    state.next_cell_id += 1
 end
 
 function _core_grow_kill_abm!(
