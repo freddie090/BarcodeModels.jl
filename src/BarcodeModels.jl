@@ -42,10 +42,10 @@ export
     RESPOP_DRUG_EFFECTS, RESDMG_DRUG_EFFECTS,
     ResPopParams, ResDmgParams,
     ResPopState, ResDmgState,
-    ABMParams, ExperimentParams,
+    ABMParams, ExperimentParams, SimpleSimParams,
     ResPop, ResDmg, ResPop_ABM, ResDmg_ABM, ResPop_ABM_EvBC, ResDmg_ABM_EvBC,
     build_phylogeny, build_tree, to_newick, lineage_to_newick, population_to_newick, lineage_node_metadata, lineage_edge_barcodes,
-    simulate_experiment,
+    simulate_experiment, simulate_simple,
     plot_simulation_outputs
 
 end

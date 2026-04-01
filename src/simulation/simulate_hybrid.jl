@@ -623,6 +623,93 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
     return Dict("t" => fin_t_outs, "u" => fin_u_outs)
 end
 
+function _simulate_simple_hybrid(model::ResPop, sim::SimpleSimParams; kwargs...)
+    params = model.params
+    save_at = _kw(kwargs, :save_at, sim.save_at)
+    drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
+    de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, params.drug_effect))
+
+    model_eff = _with_drug_effect(model, de)
+
+    nR = Float64(round(params.rho * sim.n0))
+    nS = sim.n0 - nR
+    nE = 0.0
+
+    sim_eff = SimParams(
+        n0 = sim.n0,
+        t0 = 0.0,
+        tmax = sim.tmax,
+        t_Pass = -1.0,
+        Nmax = sim.Nmax,
+        Cc = sim.Cc,
+        Nswitch = sim.Nswitch,
+        N_trans_switch = sim.N_trans_switch,
+        treat_ons = sim.treat_ons,
+        treat_offs = sim.treat_offs,
+        save_at = save_at,
+        treat = drug_treatment,
+    )
+    state = ResPopState(nS, nR, nE; gam = 0.0, pass_num = 1)
+    sol = run_model_core_hybrid(model_eff, state, sim_eff; treat = drug_treatment)
+
+    sol_df = DataFrame(
+        t = sol.t,
+        nS = map(x -> x[RESPOP_NS_INDEX], sol.u),
+        nR = map(x -> x[RESPOP_NR_INDEX], sol.u),
+        nE = map(x -> x[RESPOP_NE_INDEX], sol.u),
+        N = map(x -> x[RESPOP_NS_INDEX], sol.u) .+
+            map(x -> x[RESPOP_NR_INDEX], sol.u) .+
+            map(x -> x[RESPOP_NE_INDEX], sol.u)
+    )
+
+    return Dict("sol_df" => sol_df)
+end
+
+function _simulate_simple_hybrid(model::ResDmg, sim::SimpleSimParams; kwargs...)
+    params = model.params
+    save_at = _kw(kwargs, :save_at, sim.save_at)
+    drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
+    de = normalize_resdmg_drug_effect(_kw(kwargs, :drug_effect, params.drug_effect))
+
+    model_eff = _with_drug_effect(model, de)
+
+    nR = Float64(round(params.rho * sim.n0))
+    nS = sim.n0 - nR
+    nDS = 0.0
+    nDR = 0.0
+
+    sim_eff = SimParams(
+        n0 = sim.n0,
+        t0 = 0.0,
+        tmax = sim.tmax,
+        t_Pass = -1.0,
+        Nmax = sim.Nmax,
+        Cc = sim.Cc,
+        Nswitch = sim.Nswitch,
+        N_trans_switch = sim.N_trans_switch,
+        treat_ons = sim.treat_ons,
+        treat_offs = sim.treat_offs,
+        save_at = save_at,
+        treat = drug_treatment,
+    )
+    state = ResDmgState(nS, nDS, nDR, nR; gam = 0.0, pass_num = 1)
+    sol = run_model_core_hybrid(model_eff, state, sim_eff; treat = drug_treatment)
+
+    sol_df = DataFrame(
+        t = sol.t,
+        nS = map(x -> x[RESDMG_NS_INDEX], sol.u),
+        nDS = map(x -> x[RESDMG_NDS_INDEX], sol.u),
+        nDR = map(x -> x[RESDMG_NDR_INDEX], sol.u),
+        nR = map(x -> x[RESDMG_NR_INDEX], sol.u),
+        N = map(x -> x[RESDMG_NS_INDEX], sol.u) .+
+            map(x -> x[RESDMG_NDS_INDEX], sol.u) .+
+            map(x -> x[RESDMG_NDR_INDEX], sol.u) .+
+            map(x -> x[RESDMG_NR_INDEX], sol.u)
+    )
+
+    return Dict("sol_df" => sol_df)
+end
+
 
 
 

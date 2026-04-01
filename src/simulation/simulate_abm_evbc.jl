@@ -667,3 +667,232 @@ function _simulate_experiment_abm(model::ResDmg_ABM_EvBC, exp::ExperimentParams;
     end
     return out
 end
+
+function _run_abm_simple!(
+    model::ResPop_ABM_EvBC,
+    cells::Vector{CancerCellEvBC};
+    t0::Float64,
+    tmax::Float64,
+    Nmax::Int64,
+    Cc::Int64,
+    treat_ons::Vector{Float64},
+    treat_offs::Vector{Float64},
+    dt_save_at::Float64,
+    R_real::String,
+    t_frac::Float64,
+    rep::Int64,
+    treat::Bool,
+    drug_effect::Symbol,
+    next_cell_id::Int64,
+    lineage_records::Vector{LineageRecord},
+    sub_sample_cells::Bool = false,
+    K::Int64 = 0
+)
+    sim = ABMSimParams(
+        t0 = t0,
+        tmax = tmax,
+        Nmax = Nmax,
+        Cc = Cc,
+        treat_ons = treat_ons,
+        treat_offs = treat_offs,
+        dt_save_at = dt_save_at,
+        R_real = R_real,
+        t_frac = t_frac,
+        Passage = 1,
+        drug_effect = drug_effect
+    )
+    state = ResPopABMEvBCState(cells, next_cell_id, lineage_records)
+    kmc_out = run_model_core_abm(model, state, sim; treat = treat)
+
+    next_cell_id = state.next_cell_id
+    lineage_records = state.lineage_records
+
+    cell_lin_df_vec = DataFrame[]
+    samp_cell_lin_df_vec = DataFrame[]
+    Nvec = Int64[]
+    nS_vec = Int64[]
+    nR_vec = Int64[]
+    nE_vec = Int64[]
+    tvec = Float64[]
+    Pvec = Int64[]
+
+    _record_abm_outputs!(kmc_out, cells, rep, 1, cell_lin_df_vec,
+                         Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
+                         sub_sample_cells = sub_sample_cells, K = K,
+                         samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+
+    out = Dict(
+        "cell_lin_df_vec" => cell_lin_df_vec,
+        "lineage_records" => lineage_records,
+        "next_cell_id" => next_cell_id,
+        "Nvec" => Nvec,
+        "tvec" => tvec,
+        "Pvec" => Pvec,
+        "nS_vec" => nS_vec,
+        "nR_vec" => nR_vec,
+        "nE_vec" => nE_vec
+    )
+    if sub_sample_cells
+        out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
+    end
+    return out
+end
+
+function _run_abm_simple!(
+    model::ResDmg_ABM_EvBC,
+    cells::Vector{ResDmgCellEvBC};
+    t0::Float64,
+    tmax::Float64,
+    Nmax::Int64,
+    Cc::Int64,
+    treat_ons::Vector{Float64},
+    treat_offs::Vector{Float64},
+    dt_save_at::Float64,
+    R_real::String,
+    t_frac::Float64,
+    rep::Int64,
+    treat::Bool,
+    drug_effect::Symbol,
+    next_cell_id::Int64,
+    lineage_records::Vector{LineageRecord},
+    sub_sample_cells::Bool = false,
+    K::Int64 = 0
+)
+    sim = ABMSimParams(
+        t0 = t0,
+        tmax = tmax,
+        Nmax = Nmax,
+        Cc = Cc,
+        treat_ons = treat_ons,
+        treat_offs = treat_offs,
+        dt_save_at = dt_save_at,
+        R_real = R_real,
+        t_frac = t_frac,
+        Passage = 1,
+        drug_effect = drug_effect
+    )
+    state = ResDmgABMEvBCState(cells, next_cell_id, lineage_records)
+    kmc_out = run_model_core_abm(model, state, sim; treat = treat)
+
+    next_cell_id = state.next_cell_id
+    lineage_records = state.lineage_records
+
+    cell_lin_df_vec = DataFrame[]
+    samp_cell_lin_df_vec = DataFrame[]
+    Nvec = Int64[]
+    nS_vec = Int64[]
+    nDS_vec = Int64[]
+    nDR_vec = Int64[]
+    nR_vec = Int64[]
+    tvec = Float64[]
+    Pvec = Int64[]
+
+    _record_resdmg_abm_outputs!(kmc_out, cells, rep, 1, cell_lin_df_vec,
+                                Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
+                                sub_sample_cells = sub_sample_cells, K = K,
+                                samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+
+    out = Dict(
+        "cell_lin_df_vec" => cell_lin_df_vec,
+        "lineage_records" => lineage_records,
+        "next_cell_id" => next_cell_id,
+        "Nvec" => Nvec,
+        "tvec" => tvec,
+        "Pvec" => Pvec,
+        "nS_vec" => nS_vec,
+        "nDS_vec" => nDS_vec,
+        "nDR_vec" => nDR_vec,
+        "nR_vec" => nR_vec,
+    )
+    if sub_sample_cells
+        out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
+    end
+    return out
+end
+
+function _simulate_simple_abm(model::ResPop_ABM_EvBC, sim::SimpleSimParams; kwargs...)
+    R_real = _kw(kwargs, :R_real, "b")
+    t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
+    de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
+    drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
+    skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
+    bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
+    Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
+    dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
+
+    model_eff = _with_drug_effect(model, de)
+    cells = seed_cells(sim.n0, model.params.rho, model.abm.Nbuff;
+                       skew_lib = skew_lib, bc_unif = bc_unif, Nbc = Nbc)
+    cells_evbc, next_cell_id, lineage_records = _to_evbc_cells(cells; t0 = 0.0)
+
+    sim_out = _run_abm_simple!(
+        model_eff, cells_evbc;
+        t0 = 0.0, tmax = sim.tmax,
+        Nmax = sim.Nmax, Cc = sim.Cc,
+        treat_ons = sim.treat_ons, treat_offs = sim.treat_offs,
+        dt_save_at = dt_save_at,
+        R_real = R_real, t_frac = t_frac, rep = 1,
+        treat = drug_treatment, drug_effect = de,
+        next_cell_id = next_cell_id,
+        lineage_records = lineage_records,
+        sub_sample_cells = false, K = 0
+    )
+
+    sol_df = DataFrame(
+        t = sim_out["tvec"],
+        N = sim_out["Nvec"],
+        nS = sim_out["nS_vec"],
+        nR = sim_out["nR_vec"],
+        nE = sim_out["nE_vec"]
+    )
+
+    return Dict(
+        "lin_df" => join_dfs(sim_out["cell_lin_df_vec"], "bc"),
+        "sol_df" => sol_df,
+        "lineage_df" => _lineage_df(sim_out["lineage_records"], 1)
+    )
+end
+
+function _simulate_simple_abm(model::ResDmg_ABM_EvBC, sim::SimpleSimParams; kwargs...)
+    R_real = _kw(kwargs, :R_real, "b")
+    t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
+    de = normalize_resdmg_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
+    drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
+    skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
+    bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
+    Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
+    dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
+
+    model_eff = _with_drug_effect(model, de)
+    cells = seed_resdmg_cells(sim.n0, model.params.rho, model.abm.Nbuff;
+                              skew_lib = skew_lib, bc_unif = bc_unif, Nbc = Nbc)
+    cells_evbc, next_cell_id, lineage_records = _to_evbc_cells(cells; t0 = 0.0)
+
+    sim_out = _run_abm_simple!(
+        model_eff, cells_evbc;
+        t0 = 0.0, tmax = sim.tmax,
+        Nmax = sim.Nmax, Cc = sim.Cc,
+        treat_ons = sim.treat_ons, treat_offs = sim.treat_offs,
+        dt_save_at = dt_save_at,
+        R_real = R_real, t_frac = t_frac, rep = 1,
+        treat = drug_treatment, drug_effect = de,
+        next_cell_id = next_cell_id,
+        lineage_records = lineage_records,
+        sub_sample_cells = false, K = 0
+    )
+
+    sol_df = DataFrame(
+        t = sim_out["tvec"],
+        N = sim_out["Nvec"],
+        nS = sim_out["nS_vec"],
+        nDS = sim_out["nDS_vec"],
+        nDR = sim_out["nDR_vec"],
+        nR = sim_out["nR_vec"]
+    )
+
+    return Dict(
+        "lin_df" => join_dfs(sim_out["cell_lin_df_vec"], "bc"),
+        "sol_df" => sol_df,
+        "lineage_df" => _lineage_df(sim_out["lineage_records"], 1)
+    )
+end
