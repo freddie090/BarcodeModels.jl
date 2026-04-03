@@ -1,4 +1,4 @@
-function _lineage_df(records::Vector{LineageRecord}, rep::Int64)
+function _lineage_df(records::Vector{LineageRecord}, rep::Int64, alive_ids::Vector{Int64} = Int64[])
     if isempty(records)
         return DataFrame(
             id = Int64[],
@@ -7,6 +7,7 @@ function _lineage_df(records::Vector{LineageRecord}, rep::Int64)
             parent_pheno = String[],
             child_pheno = String[],
             barcode = Float64[],
+            alive_at_end = Bool[],
             rep = Int64[]
         )
     end
@@ -16,6 +17,8 @@ function _lineage_df(records::Vector{LineageRecord}, rep::Int64)
     parent_phenos = [r.parent_pheno for r in records]
     child_phenos = [r.child_pheno for r in records]
     barcodes = [r.barcode for r in records]
+    alive_id_set = Set(alive_ids)
+    alive_at_end = [id in alive_id_set for id in ids]
     return DataFrame(
         id = ids,
         parent_id = parent_ids,
@@ -23,6 +26,7 @@ function _lineage_df(records::Vector{LineageRecord}, rep::Int64)
         parent_pheno = parent_phenos,
         child_pheno = child_phenos,
         barcode = barcodes,
+        alive_at_end = alive_at_end,
         rep = fill(rep, length(records))
     )
 end
@@ -203,6 +207,7 @@ function _run_abm_passage_experiment!(
     out = Dict(
         "cell_lin_df_vec" => cell_lin_df_vec,
         "lineage_records" => lineage_records,
+        "alive_ids" => Int64[c.id for c in cells if c.alive && c.id > 0],
         "next_cell_id" => next_cell_id,
         "Nvec" => Nvec,
         "tvec" => tvec,
@@ -394,6 +399,7 @@ function _run_abm_passage_experiment!(
     out = Dict(
         "cell_lin_df_vec" => cell_lin_df_vec,
         "lineage_records" => lineage_records,
+        "alive_ids" => Int64[c.id for c in cells if c.alive && c.id > 0],
         "next_cell_id" => next_cell_id,
         "Nvec" => Nvec,
         "tvec" => tvec,
@@ -479,7 +485,7 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
         )
         push!(sim_dfs, sim_df)
         push!(lin_df_outs, join_dfs(sim["cell_lin_df_vec"], "bc"))
-        push!(lineage_df_outs, _lineage_df(sim["lineage_records"], i))
+        push!(lineage_df_outs, _lineage_df(sim["lineage_records"], i, sim["alive_ids"]))
         if sub_sample_cells
             push!(sub_lin_df_outs, join_dfs(sim["sub_samp_cell_lin_df_vec"], "bc"))
         end
@@ -609,7 +615,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM_EvBC, exp::ExperimentParams;
         )
         push!(sim_dfs, sim_df)
         push!(lin_df_outs, join_dfs(sim["cell_lin_df_vec"], "bc"))
-        push!(lineage_df_outs, _lineage_df(sim["lineage_records"], i))
+        push!(lineage_df_outs, _lineage_df(sim["lineage_records"], i, sim["alive_ids"]))
         if sub_sample_cells
             push!(sub_lin_df_outs, join_dfs(sim["sub_samp_cell_lin_df_vec"], "bc"))
         end
@@ -724,6 +730,7 @@ function _run_abm_simple!(
     out = Dict(
         "cell_lin_df_vec" => cell_lin_df_vec,
         "lineage_records" => lineage_records,
+        "alive_ids" => Int64[c.id for c in cells if c.alive && c.id > 0],
         "next_cell_id" => next_cell_id,
         "Nvec" => Nvec,
         "tvec" => tvec,
@@ -795,6 +802,7 @@ function _run_abm_simple!(
     out = Dict(
         "cell_lin_df_vec" => cell_lin_df_vec,
         "lineage_records" => lineage_records,
+        "alive_ids" => Int64[c.id for c in cells if c.alive && c.id > 0],
         "next_cell_id" => next_cell_id,
         "Nvec" => Nvec,
         "tvec" => tvec,
@@ -849,7 +857,7 @@ function _simulate_simple_abm(model::ResPop_ABM_EvBC, sim::SimpleSimParams; kwar
     return Dict(
         "lin_df" => join_dfs(sim_out["cell_lin_df_vec"], "bc"),
         "sol_df" => sol_df,
-        "lineage_df" => _lineage_df(sim_out["lineage_records"], 1)
+        "lineage_df" => _lineage_df(sim_out["lineage_records"], 1, sim_out["alive_ids"])
     )
 end
 
@@ -893,6 +901,6 @@ function _simulate_simple_abm(model::ResDmg_ABM_EvBC, sim::SimpleSimParams; kwar
     return Dict(
         "lin_df" => join_dfs(sim_out["cell_lin_df_vec"], "bc"),
         "sol_df" => sol_df,
-        "lineage_df" => _lineage_df(sim_out["lineage_records"], 1)
+        "lineage_df" => _lineage_df(sim_out["lineage_records"], 1, sim_out["alive_ids"])
     )
 end
