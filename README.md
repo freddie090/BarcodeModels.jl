@@ -96,6 +96,96 @@ Population expansion is regulated by a carrying capacity $C_c$, implemented thro
 
 
 
+## Simple simulations (single population)
+
+It is possible to run a single-population simulation that does not include the full experiment functionality (no shared expansion period and multiple replicates) with:
+
+- `simulate_simple(model, sim)`
+
+This version allows a single population of cells with known initial conditions to be grown with a given (optional) treatment schedule.
+
+### Input type: `SimpleSimParams`
+
+`simulate_simple` takes a `SimpleSimParams` object instead of `ExperimentParams`.
+
+```julia
+sim = SimpleSimParams(
+        n0 = Int(1e+03),
+        tmax = 30.0,
+        Nmax = Int(5e+04),
+        Cc = Int(1e+05),
+        treat_ons = Float64[1.0],
+        treat_offs = Float64[30.0],
+        Nswitch = 500,
+        N_trans_switch = 1000.0,
+        save_at = 0.5,
+        drug_treatment = true
+)
+```
+
+### Minimal examples
+
+```julia
+using BarcodeModels
+
+params = ResPopParams(
+        b = 0.893,
+        d = 0.200,
+        rho = 1e-01,
+        mu = 1e-01,
+        sig = 0.0,
+        del = 0.0,
+        al = 0.0,
+        Dc = 1.4,
+        k = 0.5,
+        psi = 0.0,
+        drug_effect = :c
+)
+
+sim = SimpleSimParams(
+        n0 = Int(1e+03),
+        tmax = 30.0,
+        Nmax = Int(5e+04),
+        Cc = Int(1e+05),
+        treat_ons = Float64[1.0],
+        treat_offs = Float64[30.0],
+        Nswitch = 500,
+        N_trans_switch = 1000.0,
+        save_at = 0.5,
+        drug_treatment = true
+)
+
+# Hybrid
+out_hybrid = simulate_simple(ResPop(params), sim)
+
+# Standard ABM
+out_abm = simulate_simple(ResPop_ABM(params), sim)
+
+# EvBC ABM
+out_evbc = simulate_simple(ResPop_ABM_EvBC(params), sim)
+```
+
+### Output format summary
+
+`simulate_simple` returns a `Dict{String, Any}`. Keys depend on model class:
+
+- Hybrid models (`ResPop`, `ResDmg`):
+    - `"sol_df"`
+
+- Standard ABM models (`ResPop_ABM`, `ResDmg_ABM`):
+    - `"sol_df"`
+    - `"lin_df"`
+
+- EvBC ABM models (`ResPop_ABM_EvBC`, `ResDmg_ABM_EvBC`):
+    - `"sol_df"`
+    - `"lin_df"`
+    - `"lineage_df"`
+
+Notes:
+- `simulate_simple` does not return `"t"` or `"u"`.
+- EvBC `lineage_df` includes ground-truth lineage columns (`id`, `parent_id`, `birth_time`, phenotype-at-division fields, `barcode`, `alive_at_end`, `rep`).
+
+
 ## Experimental design
 
 `BarcodeModels.jl` uses a shared **experimental design layer**, so you can run different model implementations with the same `ExperimentParams` object.
@@ -113,19 +203,18 @@ Features of the experimental design include:
 
 ## Quick start
 
-### 1) Download or clone the code
-
-```bash
-git clone https://github.com/freddie090/BarcodeModels.jl.git
-cd BarcodeModels.jl
-```
-
-### 2) Activate the project environment and install dependencies
+### 1) Install from GitHub (Julia package manager)
 
 ```julia
 import Pkg
-Pkg.activate(".")
-Pkg.instantiate()
+Pkg.add(url = "https://github.com/freddie090/BarcodeModels.jl.git")
+```
+
+### 2) Update to the latest package version
+
+```julia
+import Pkg
+Pkg.update("BarcodeModels")
 ```
 
 ### 3) Load the package
@@ -314,4 +403,130 @@ Experiment design shared by both model families.
 ## Tests
 ```bash
 julia --project -e "using Pkg; Pkg.test()"
+```
+
+## Evolvable Barcode (EvBC) Functionality
+
+### Current scope (important)
+The EvBC model variants currently provide **ground-truth lineage tracking** for all simulated cells.
+
+
+### New EvBC model classes
+The following Agent-Based model classes are available and dispatched through the same high-level simulation API:
+
+- `ResPop_ABM_EvBC(params; abm=ABMParams())`
+- `ResDmg_ABM_EvBC(params; abm=ABMParams())`
+
+You can call either:
+- `simulate_experiment(model_evbc, exp)` for full experiment design workflow (expansion/replicates/passaging)
+- `simulate_simple(model_evbc, sim)` for a single-run simplified workflow
+
+### EvBC outputs and how to access them
+
+#### 1) Experiment API
+`simulate_experiment(model_evbc, exp)` returns a `Dict{String, Any}` with EvBC-specific lineage outputs in addition to standard ABM outputs.
+
+Common keys:
+- `"sol_df"`: time-series simulation table
+- `"lin_df"`: barcode count table across replicate/passage snapshots
+- `"lineage_df"`: ground-truth lineage table
+
+Additional keys:
+- `"t"`, `"u"` are included unless `just_lin=true`
+- `"sub_lin_df"` is included when `sub_sample_cells=true`
+
+`lineage_df` schema (EvBC):
+- `id::Int64`: unique cell lineage node id
+- `parent_id::Int64`: direct parent id (`0` indicates founder/root record)
+- `birth_time::Float64`: simulation time when node was created
+- `parent_pheno::String`: parent phenotype at division event
+- `child_pheno::String`: child phenotype after transition logic is applied
+- `barcode::Float64`: node barcode value (currently inherited ground-truth value)
+- `alive_at_end::Bool`: whether that lineage node is alive at simulation end
+- `rep::Int64`: replicate index
+
+`sol_df` columns:
+- `ResPop_ABM_EvBC`: `t, N, nS, nR, nE, rep`
+- `ResDmg_ABM_EvBC`: `t, N, nS, nDS, nDR, nR, rep`
+
+#### 2) Simple API
+`simulate_simple(model_evbc, sim)` returns a simplified output dictionary:
+- `"sol_df"`
+- `"lin_df"`
+- `"lineage_df"`
+
+Notes:
+- `simulate_simple` does not return `"t"`/`"u"`
+- `lineage_df` still includes `rep` (fixed to `1` in simple mode)
+
+### Working with lineage outputs
+
+The following utility functions can be used directly on `lineage_df`:
+
+- `build_phylogeny(lineage_df; extant_only=false)`
+    - Returns edge list: `Vector{Tuple{Int64,Int64}}` as `(parent_id, child_id)`
+
+- `build_tree(lineage_df; extant_only=false)`
+    - Returns adjacency dictionary: `Dict{Int64,Vector{Int64}}`
+
+- `lineage_to_newick(lineage_df, root_id; extant_only=false)`
+    - Returns Newick string for the specified root
+
+- `population_to_newick(lineage_df, root_id; extant_only=false)`
+    - Alias of `lineage_to_newick`
+
+- `lineage_node_metadata(lineage_df)`
+    - Returns node-level metadata subset (including optional columns such as `alive_at_end` when present)
+
+- `lineage_edge_barcodes(lineage_df)`
+    - Returns parent/child edge table with barcode annotations
+
+`extant_only=true` behavior:
+- Keeps all nodes with an extant ancestor at the end of the simulation
+- Also keeps any internal ancestors required to connect extant nodes
+- Excludes extinct-only terminal branches that are not ancestral to extant nodes
+
+
+### Minimal EvBC usage example
+
+```julia
+using BarcodeModels
+
+params = ResPopParams(
+        b = 0.893,
+        d = 0.200,
+        rho = 1e-01,
+        mu = 1e-01,
+        sig = 0.0,
+        del = 0.0,
+        al = 0.0,
+        Dc = 1.4,
+        k = 0.5,
+        psi = 0.0,
+        drug_effect = :c
+)
+
+model_abm_evbc = ResPop_ABM_EvBC(params; abm = ABMParams())
+
+exp = ExperimentParams(
+        n0 = Int(1e+03),
+        t_exp = 6.0,
+        tmax = 30.0,
+        t_Pass = Float64[],
+        Nseed = Int(1e+03),
+        Nmax = Int(5e+04),
+        Cc = Int(1e+05),
+        treat_ons = Float64[1.0],
+        treat_offs = Float64[30.0],
+        t_keep = [5.0],
+        Nswitch = 500,
+        n_rep = 4
+)
+
+out = simulate_experiment(model_abm_evbc, exp)
+lineage_df = out["lineage_df"]
+
+all_edges = build_phylogeny(lineage_df)
+extant_edges = build_phylogeny(lineage_df; extant_only = true)
+tree_newick = lineage_to_newick(lineage_df, 1; extant_only = true)
 ```
