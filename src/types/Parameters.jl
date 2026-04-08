@@ -113,8 +113,10 @@ end
 function validate_model_params_strict(params::ResDmgParams)
     validate_model_params(params)
     params.psi >= 0.0 || error("psi must be between 0 and 1.")
-    params.zet_R >= params.zet_S || error("zet_R must be >= zet_S for resistant cells to have at least as high repair propensity as sensitive cells.")
-    return params
+    if params.zet_R > 0.0
+        params.zet_R >= params.zet_S || error("zet_R must be >= zet_S for resistant cells to have at least as high repair propensity as sensitive cells.")
+    end
+    return params   
 end
 
 struct SimParams
