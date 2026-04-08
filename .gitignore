@@ -1,3 +1,4 @@
 Manifest.toml
 test/manual_tests.jl
+test/manual_tests_evbc.jl
 test/manual_test_helpers.jl
