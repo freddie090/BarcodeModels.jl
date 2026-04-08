@@ -208,6 +208,85 @@ struct ExperimentParams
     ColNmax::Int64
 end
 
+struct SimpleSimParams
+    n0::Int64
+    tmax::Float64
+    Nmax::Int64
+    Cc::Int64
+    treat_ons::Vector{Float64}
+    treat_offs::Vector{Float64}
+    Nswitch::Int64
+    N_trans_switch::Float64
+    save_at::Float64
+    drug_treatment::Bool
+end
+
+function validate_simple_params(; n0, tmax, Nmax, Cc,
+                                treat_ons, treat_offs,
+                                Nswitch, N_trans_switch,
+                                save_at, drug_treatment)
+    n0 isa Integer || error("n0 must be an integer.")
+    n0 > 0 || error("n0 must be > 0.")
+
+    tmax isa Real || error("tmax must be a number.")
+    tmax > 0 || error("tmax must be > 0.")
+
+    Nmax isa Integer || error("Nmax must be an integer.")
+    Nmax > 0 || error("Nmax must be > 0.")
+
+    Cc isa Integer || error("Cc must be an integer.")
+    Cc > 0 || error("Cc must be > 0.")
+    Nmax <= Cc || error("Nmax must be <= Cc.")
+
+    treat_ons isa AbstractVector{<:Real} || error("treat_ons must be a vector of numbers.")
+    treat_offs isa AbstractVector{<:Real} || error("treat_offs must be a vector of numbers.")
+    length(treat_ons) == length(treat_offs) || error("treat_ons and treat_offs must have matching lengths.")
+
+    Nswitch isa Integer || error("Nswitch must be an integer.")
+    Nswitch > 0 || error("Nswitch must be > 0.")
+
+    N_trans_switch isa Real || error("N_trans_switch must be a number.")
+    N_trans_switch > 0 || error("N_trans_switch must be > 0.")
+
+    save_at isa Real || error("save_at must be a number.")
+    save_at > 0 || error("save_at must be > 0.")
+
+    drug_treatment isa Bool || error("drug_treatment must be Bool.")
+
+    return nothing
+end
+
+function SimpleSimParams(; n0, tmax, Nmax, Cc,
+                         treat_ons=Float64[], treat_offs=Float64[],
+                         Nswitch=100, N_trans_switch=1000.0,
+                         save_at=0.5, drug_treatment=true)
+    validate_simple_params(
+        n0 = n0,
+        tmax = tmax,
+        Nmax = Nmax,
+        Cc = Cc,
+        treat_ons = treat_ons,
+        treat_offs = treat_offs,
+        Nswitch = Nswitch,
+        N_trans_switch = N_trans_switch,
+        save_at = save_at,
+        drug_treatment = drug_treatment
+    )
+
+    return SimpleSimParams(
+        Int64(n0),
+        Float64(tmax),
+        Int64(Nmax),
+        Int64(Cc),
+        Vector{Float64}(treat_ons),
+        Vector{Float64}(treat_offs),
+        Int64(Nswitch),
+        Float64(N_trans_switch),
+        Float64(save_at),
+        Bool(drug_treatment)
+    )
+end
+
 function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                                     treat_ons, treat_offs, t_keep, Nswitch,
                                     N_trans_switch, save_at, n_rep, drug_treatment,

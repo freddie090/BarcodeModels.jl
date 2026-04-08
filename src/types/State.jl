@@ -25,6 +25,16 @@ function ResDmgState(nS::Real, nDS::Real, nDR::Real, nR::Real; gam=0.0, pass_num
     return ResDmgState(Float64(gam), Float64(nS), Float64(nDS), Float64(nDR), Float64(nR), Int64(pass_num))
 end
 
+"""Shared lineage record used by EvBC model variants and utilities."""
+struct LineageRecord
+    id::Int64
+    parent_id::Int64
+    birth_time::Float64
+    parent_pheno::String
+    child_pheno::String
+    barcode::Float64
+end
+
 function to_componentarray(state::ResPopState)
     return ComponentArray(
         gam = state.gam,
