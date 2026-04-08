@@ -28,14 +28,9 @@ The package contains different models that encompass different hypotheses for ho
 
 All models in `BarcodeModels.jl` share a common structure describing phenotype-specific population growth under treatment.
 
-#### 1. Drug uptake and decay  
-Drug exposure is modelled through a time-dependent effective concentration $D_c(t)$, governed by a simple uptake–decay process:
-- `Dc` sets the maximum effective drug concentration ($D_c$)
-- `k` controls the rate of drug uptake and/or decay ($\kappa$) 
-
 Treatment is applied through scheduled on/off windows.
 
-#### 2. Phenotype-specific birth, death and transition events  
+#### 1. Phenotype-specific birth, death and transition events  
 Cells exist in discrete phenotypic states with each phenotype $X$ defined by:
 - Birth rate $b_X$  
 - Death rate $d_X$
@@ -45,16 +40,21 @@ Population dynamics arise from:
 - Death events  
 - Phenotype transition events between states  
 
-
-#### 3. Intrinsic and treatment-dependent transitions  
+#### 2. Intrinsic and treatment-dependent transitions  
 Phenotype transitions can occur via two distinct mechanisms:
-- **Intrinsic transitions**: occur independently of treatment and reflect baseline plasticity  
-- **Treatment-dependent transitions**: occur as a function of drug exposure,  modulated by $D_c(t)$  
+- **Intrinsic transitions**: occur independently of treatment
+- **Treatment-dependent transitions**: occur as a function of drug exposure,  modulated by the current effective concentration ($D_c(t)$)
 
 This allows the models to capture both pre-existing and drug-induced resistance mechanisms.
 
-#### 4. Logistic population growth  
-Population expansion is regulated by a carrying capacity $C_c$, implemented through logistic growth.
+#### 3. Logistic population growth  
+Population growth is logistic and is regulated by a carrying capacity $C_c$.
+
+#### 4. Drug uptake and decay  
+Drug exposure is modelled through a time-dependent effective concentration $D_c(t)$, governed by a simple uptake–decay process:
+- `Dc` sets the maximum effective drug concentration ($D_c$)
+- `k` controls the rate of drug uptake and/or decay ($\kappa$) 
+
 
 ### ResPop
 `ResPop` models up to three possible phenotypes (`S`, `R`, `E`) and can be run using either model class:
@@ -72,7 +72,7 @@ Population expansion is regulated by a carrying capacity $C_c$, implemented thro
         - `:d`: drug increases the death rate
         - `:b`: drug decreases the birth rate
         - `:c`: drug decreases the birth rate and then increases the death rate
-    - Phenotypes `R` and `E` experience reduced effect of the drug
+    - Phenotypes `R` and `E` experience reduced effect of the drug mediated via `psi` (where `psi=0` means no attenuation and `psi=1` means complete attenuation).
         - e.g. for `:d` drug effect: $d_R = d + (D_C(t) \cdot (1 - \psi))$
 
 ### ResDmg
@@ -98,92 +98,24 @@ Population expansion is regulated by a carrying capacity $C_c$, implemented thro
 
 ## Simple simulations (single population)
 
-It is possible to run a single-population simulation that does not include the full experiment functionality (no shared expansion period and multiple replicates) with:
+`BarcodeModels.jl` also provides a simplified **single-population simulation layer** through `simulate_simple(model, sim)`.
 
-- `simulate_simple(model, sim)`
+This pathway is intended for rapid model interrogation without the full replicate/passaging experiment workflow.
 
-This version allows a single population of cells with known initial conditions to be grown with a given (optional) treatment schedule.
+Features of the simple simulation layer include:
+- Shared dispatch across model families (`ResPop`, `ResDmg`, ABM variants, and EvBC ABM variants).
+- Input via `SimpleSimParams` for one-population runs with optional treatment windows.
+- Compact outputs for trajectory and barcode summaries (`sol_df`; plus `lin_df` for ABM classes).
+- EvBC support returns lineage outputs (`lineage_df`) with ground-truth relatedness metadata.
+- No experiment-level expansion/passaging/replicate orchestration (use `simulate_experiment` for those workflows).
 
-### Input type: `SimpleSimParams`
+### Outputs
 
-`simulate_simple` takes a `SimpleSimParams` object instead of `ExperimentParams`.
+- `sol_df`: time-series population output table for the simulated run.
+- `lin_df`: barcode abundance table for ABM model classes.
+- `lineage_df`: EvBC-only ground-truth lineage table with parent-child relationships and lineage metadata.
 
-```julia
-sim = SimpleSimParams(
-        n0 = Int(1e+03),
-        tmax = 30.0,
-        Nmax = Int(5e+04),
-        Cc = Int(1e+05),
-        treat_ons = Float64[1.0],
-        treat_offs = Float64[30.0],
-        Nswitch = 500,
-        N_trans_switch = 1000.0,
-        save_at = 0.5,
-        drug_treatment = true
-)
-```
-
-### Minimal examples
-
-```julia
-using BarcodeModels
-
-params = ResPopParams(
-        b = 0.893,
-        d = 0.200,
-        rho = 1e-01,
-        mu = 1e-01,
-        sig = 0.0,
-        del = 0.0,
-        al = 0.0,
-        Dc = 1.4,
-        k = 0.5,
-        psi = 0.0,
-        drug_effect = :c
-)
-
-sim = SimpleSimParams(
-        n0 = Int(1e+03),
-        tmax = 30.0,
-        Nmax = Int(5e+04),
-        Cc = Int(1e+05),
-        treat_ons = Float64[1.0],
-        treat_offs = Float64[30.0],
-        Nswitch = 500,
-        N_trans_switch = 1000.0,
-        save_at = 0.5,
-        drug_treatment = true
-)
-
-# Hybrid
-out_hybrid = simulate_simple(ResPop(params), sim)
-
-# Standard ABM
-out_abm = simulate_simple(ResPop_ABM(params), sim)
-
-# EvBC ABM
-out_evbc = simulate_simple(ResPop_ABM_EvBC(params), sim)
-```
-
-### Output format summary
-
-`simulate_simple` returns a `Dict{String, Any}`. Keys depend on model class:
-
-- Hybrid models (`ResPop`, `ResDmg`):
-    - `"sol_df"`
-
-- Standard ABM models (`ResPop_ABM`, `ResDmg_ABM`):
-    - `"sol_df"`
-    - `"lin_df"`
-
-- EvBC ABM models (`ResPop_ABM_EvBC`, `ResDmg_ABM_EvBC`):
-    - `"sol_df"`
-    - `"lin_df"`
-    - `"lineage_df"`
-
-Notes:
-- `simulate_simple` does not return `"t"` or `"u"`.
-- EvBC `lineage_df` includes ground-truth lineage columns (`id`, `parent_id`, `birth_time`, phenotype-at-division fields, `barcode`, `alive_at_end`, `rep`).
+Runnable examples are provided in `Quick start`.
 
 
 ## Experimental design
@@ -199,6 +131,15 @@ Features of the experimental design include:
 - Replicate experiments (`n_rep`) under identical fixed design settings.
 - Optional treatment windows (`treat_ons`, `treat_offs`) and compact observation outputs (`t_keep`).
 - Optional assay branches (`run_IC`, `run_colony`) where enabled in simulation pipelines.
+
+### Outputs
+
+- `sol_df`: full experiment trajectory table across time and replicate outputs.
+- `lin_df`: barcode abundance summary table across replicate/passage outputs.
+- `t`: summary vector of sampled times (returned unless `just_lin=true`).
+- `u`: summary vector of population sizes aligned to `t` (returned unless `just_lin=true`).
+- `sub_lin_df`: optional subsampled barcode table when `sub_sample_cells=true`.
+- `lineage_df`: EvBC-only ground-truth lineage table with node-level lineage metadata.
 
 
 ## Quick start
@@ -223,7 +164,47 @@ Pkg.update("BarcodeModels")
 using BarcodeModels
 ```
 
-### 4) Run a minimal experiment
+### 4) Run a minimal simple simulation (single population)
+
+```julia
+params = ResPopParams(
+    b = 0.893,
+    d = 0.200,
+    rho = 1e-01,
+    mu = 1e-01,
+    sig = 0.0,
+    del = 0.0,
+    al = 0.0,
+    Dc = 1.4,
+    k = 0.5,
+    psi = 0.0,
+    drug_effect = :c
+)
+
+sim = SimpleSimParams(
+    n0 = Int(1e+03),
+    tmax = 30.0,
+    Nmax = Int(5e+04),
+    Cc = Int(1e+05),
+    treat_ons = Float64[1.0],
+    treat_offs = Float64[30.0],
+    Nswitch = 500,
+    N_trans_switch = 1000.0,
+    save_at = 0.5,
+    drug_treatment = true
+)
+
+# Hybrid
+simple_hybrid = simulate_simple(ResPop(params), sim)
+
+# Standard ABM
+simple_abm = simulate_simple(ResPop_ABM(params), sim)
+
+# EvBC ABM
+simple_evbc = simulate_simple(ResPop_ABM_EvBC(params), sim)
+```
+
+### 5) Run a minimal full experiment
 
 ```julia
 params = ResPopParams(
@@ -262,22 +243,6 @@ exp = ExperimentParams(
 
 result_hybrid = simulate_experiment(model_hybrid, exp)
 result_abm = simulate_experiment(model_abm, exp)
-
-# Optional per-replicate horizons (must use no passage events):
-# exp_vec_tmax = ExperimentParams(
-#     n0 = Int(1e+03),
-#     t_exp = 6.0,
-#     tmax = [20.0, 25.0, 30.0, 35.0],
-#     t_Pass = Float64[],
-#     Nseed = Int(1e+03),
-#     Nmax = Int(5e+04),
-#     Cc = Int(1e+05),
-#     treat_ons = Float64[1.0],
-#     treat_offs = Float64[30.0],
-#     t_keep = [5.0],
-#     Nswitch = 500,
-#     n_rep = 4
-# )
 
 # ResDmg variant
 params_dmg = ResDmgParams(
@@ -401,9 +366,7 @@ Experiment design shared by both model families.
 - `test/runtests.jl`: integration tests.
 
 ## Tests
-```bash
-julia --project -e "using Pkg; Pkg.test()"
-```
+Run tests with: `julia --project -e "using Pkg; Pkg.test()"`
 
 ## Evolvable Barcode (EvBC) Functionality
 
@@ -489,44 +452,6 @@ The following utility functions can be used directly on `lineage_df`:
 
 ### Minimal EvBC usage example
 
-```julia
-using BarcodeModels
+For a runnable EvBC end-to-end example, see `Quick start` (simple simulation first, then full experiment) and use `ResPop_ABM_EvBC` or `ResDmg_ABM_EvBC` as the model class.
 
-params = ResPopParams(
-        b = 0.893,
-        d = 0.200,
-        rho = 1e-01,
-        mu = 1e-01,
-        sig = 0.0,
-        del = 0.0,
-        al = 0.0,
-        Dc = 1.4,
-        k = 0.5,
-        psi = 0.0,
-        drug_effect = :c
-)
-
-model_abm_evbc = ResPop_ABM_EvBC(params; abm = ABMParams())
-
-exp = ExperimentParams(
-        n0 = Int(1e+03),
-        t_exp = 6.0,
-        tmax = 30.0,
-        t_Pass = Float64[],
-        Nseed = Int(1e+03),
-        Nmax = Int(5e+04),
-        Cc = Int(1e+05),
-        treat_ons = Float64[1.0],
-        treat_offs = Float64[30.0],
-        t_keep = [5.0],
-        Nswitch = 500,
-        n_rep = 4
-)
-
-out = simulate_experiment(model_abm_evbc, exp)
-lineage_df = out["lineage_df"]
-
-all_edges = build_phylogeny(lineage_df)
-extant_edges = build_phylogeny(lineage_df; extant_only = true)
-tree_newick = lineage_to_newick(lineage_df, 1; extant_only = true)
-```
+After simulation, access lineage outputs via `out["lineage_df"]`, then call utilities such as `build_phylogeny(...)`, `build_tree(...)`, and `lineage_to_newick(...)` (optionally with `extant_only=true`).
