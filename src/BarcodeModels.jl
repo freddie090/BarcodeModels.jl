@@ -7,6 +7,7 @@ module BarcodeModels
 
 using ComponentArrays
 using DifferentialEquations
+using OrdinaryDiffEqRosenbrock
 using JumpProcesses
 using Distributions
 using Suppressor

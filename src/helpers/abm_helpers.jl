@@ -45,7 +45,7 @@ function drug_treat_concs(tmax::Float64, k::Float64, Dc::Float64,
     event_times = vcat(filter_times_in_span(treat_ons), filter_times_in_span(treat_offs))
     tstops = isempty(event_times) ? save_times : sort(unique(vcat(save_times, event_times)))
 
-    sol = solve(prob, Rodas5(), callback = cbs, tstops = tstops)
+    sol = solve(prob, OrdinaryDiffEqRosenbrock.Rodas5(), callback = cbs, tstops = tstops)
 
     return Dict(
         "t" => sol.t,
