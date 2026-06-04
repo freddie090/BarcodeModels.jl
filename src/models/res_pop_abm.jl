@@ -71,7 +71,7 @@ function ABMSimParams(; t0 = 0.0, tmax, Nmax, Cc, treat_ons, treat_offs,
         Int64(Passage),
         normalize_respop_drug_effect(drug_effect)
     )
-end
+end 
 
 make_dead_cell() = CancerCell(0.0, false, false, false)
 
