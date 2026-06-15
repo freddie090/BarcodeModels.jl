@@ -425,8 +425,10 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
     sub_sample_cells = _kw(kwargs, :sub_sample_cells, model.abm.sub_sample_cells)
     K = _kw(kwargs, :K, model.abm.K)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
+    use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
+    bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
     run_IC = _kw(kwargs, :run_IC, exp.run_IC)
     run_colony = _kw(kwargs, :run_colony, exp.run_colony)
@@ -444,8 +446,10 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
                                              R_real = R_real,
                                              drug_effect = de,
                                              skew_lib = skew_lib,
+                                             use_lib_probs = use_lib_probs,
                                              bc_unif = bc_unif,
                                              Nbc = Nbc,
+                                             bc_probs = bc_probs,
                                              dt_save_at = dt_save_at,
                                              t_frac = t_frac)
 
@@ -554,8 +558,10 @@ function _simulate_experiment_abm(model::ResDmg_ABM_EvBC, exp::ExperimentParams;
     sub_sample_cells = _kw(kwargs, :sub_sample_cells, model.abm.sub_sample_cells)
     K = _kw(kwargs, :K, model.abm.K)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
+    use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
+    bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
     run_IC = _kw(kwargs, :run_IC, exp.run_IC)
     run_colony = _kw(kwargs, :run_colony, exp.run_colony)
@@ -573,8 +579,10 @@ function _simulate_experiment_abm(model::ResDmg_ABM_EvBC, exp::ExperimentParams;
                                              R_real = R_real,
                                              drug_effect = de,
                                              skew_lib = skew_lib,
+                                             use_lib_probs = use_lib_probs,
                                              bc_unif = bc_unif,
                                              Nbc = Nbc,
+                                             bc_probs = bc_probs,
                                              dt_save_at = dt_save_at,
                                              t_frac = t_frac)
 
@@ -824,13 +832,17 @@ function _simulate_simple_abm(model::ResPop_ABM_EvBC, sim::SimpleSimParams; kwar
     de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
     drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
+    use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
+    bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     model_eff = _with_drug_effect(model, de)
+    barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
+                       bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
     cells = seed_cells(sim.n0, model.params.rho, model.abm.Nbuff;
-                       skew_lib = skew_lib, bc_unif = bc_unif, Nbc = Nbc)
+                       barcode_kwargs...)
     cells_evbc, next_cell_id, lineage_records = _to_evbc_cells(cells; t0 = 0.0)
 
     sim_out = _run_abm_simple!(
@@ -867,13 +879,17 @@ function _simulate_simple_abm(model::ResDmg_ABM_EvBC, sim::SimpleSimParams; kwar
     de = normalize_resdmg_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
     drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
+    use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
+    bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     model_eff = _with_drug_effect(model, de)
+    barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
+                       bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
     cells = seed_resdmg_cells(sim.n0, model.params.rho, model.abm.Nbuff;
-                              skew_lib = skew_lib, bc_unif = bc_unif, Nbc = Nbc)
+                              barcode_kwargs...)
     cells_evbc, next_cell_id, lineage_records = _to_evbc_cells(cells; t0 = 0.0)
 
     sim_out = _run_abm_simple!(

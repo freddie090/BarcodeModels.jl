@@ -220,6 +220,42 @@ end
     @test result !== nothing
 end
 
+@testset "ABM barcode library probabilities" begin
+    @test_throws ErrorException ABMParams(
+        use_lib_probs = true,
+        skew_lib = true,
+        Nbc = 2,
+        bc_probs = [0.5, 0.5]
+    )
+
+    @test_throws ErrorException ABMParams(
+        use_lib_probs = true,
+        Nbc = 2,
+        bc_probs = [1.0]
+    )
+
+    @test_throws ErrorException ABMParams(
+        use_lib_probs = true,
+        Nbc = 2,
+        bc_probs = [0.7, 0.4]
+    )
+
+    abm = ABMParams(Nbuff = 10, use_lib_probs = true, Nbc = 2, bc_probs = [1.0, 0.0])
+    respop_cells = BarcodeModels.seed_cells(4, 0.0, 4;
+                                            use_lib_probs = abm.use_lib_probs,
+                                            Nbc = abm.Nbc,
+                                            bc_probs = abm.bc_probs)
+    resdmg_cells = BarcodeModels.seed_resdmg_cells(4, 0.0, 4;
+                                                   use_lib_probs = abm.use_lib_probs,
+                                                   Nbc = abm.Nbc,
+                                                   bc_probs = abm.bc_probs)
+
+    @test all(cell -> cell.barcode == 1.0, respop_cells)
+    @test all(cell -> cell.barcode == 1.0, resdmg_cells)
+    @test all(cell -> 1.0 <= cell.barcode <= 2.0, respop_cells)
+    @test all(cell -> 1.0 <= cell.barcode <= 2.0, resdmg_cells)
+end
+
 @testset "BarcodeModels integration (ResDmg hybrid)" begin
     params = ResDmgParams(
         b = 1.0,

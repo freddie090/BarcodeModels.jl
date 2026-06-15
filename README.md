@@ -306,14 +306,18 @@ Additional `drug_effect == :b` requirement:
 ### `ABMParams`
 Parameters specific to the agent-based model implementation.
 
+Barcode initialization supports three modes: default sequential IDs, generated skewed libraries (`skew_lib=true`), or caller-supplied library probabilities (`use_lib_probs=true`). The two library modes are mutually exclusive, and `bc_probs` must already be a valid probability vector with length `Nbc`.
+
 | Parameter | Type (default) | Meaning | Constraints / notes |
 |---|---|---|---|
 | `Nbuff` | `Int64` (`100000`) | Cell-buffer size (live + dead slots). | Increase for large populations; affects memory. |
 | `t_frac` | `Float64` (`0.005`) | Fraction of `tmax` used for ABM recording interval. | Must be in `[0, 1]` at runtime. |
 | `dt_save_at` | `Float64` (`0.1`) | Drug concentration interpolation/save cadence for ABM. | Positive recommended. |
 | `skew_lib` | `Bool` (`false`) | Enable skewed barcode library initialization. | ABM-only feature. |
+| `use_lib_probs` | `Bool` (`false`) | Enable caller-supplied barcode library probabilities. | Mutually exclusive with `skew_lib`. |
 | `bc_unif` | `Float64` (`0.0`) | Skew/uniformity control for barcodes. | Used when `skew_lib=true`. |
 | `Nbc` | `Int64` (`0`) | Number of barcodes in skewed library mode. | Used when `skew_lib=true`. |
+| `bc_probs` | `Vector{Float64}` (`Float64[]`) | Library barcode probabilities used for direct barcode sampling. | Used when `use_lib_probs=true`; must have length `Nbc` and sum to 1. |
 | `sub_sample_cells` | `Bool` (`false`) | Enable per-passage subsampling outputs. | ABM-only output option. |
 | `K` | `Int64` (`0`) | Subsample size when `sub_sample_cells=true`. | Must be consistent with live-cell count. |
 
