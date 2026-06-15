@@ -24,6 +24,21 @@ function _replicate_tmax(tmax, n_rep::Int64, i::Int64)
     return tmax isa AbstractVector ? Float64(tmax[i]) : Float64(tmax)
 end
 
+function _experiment_condition_design(drug_treatment::Bool, inc_control::Bool, n_rep::Int64)
+    design = Vector{NamedTuple{(:cond, :treat, :rep), Tuple{String, Bool, Int64}}}()
+    if inc_control || !drug_treatment
+        for rep in 1:n_rep
+            push!(design, (cond = "CO", treat = false, rep = Int64(rep)))
+        end
+    end
+    if drug_treatment
+        for rep in 1:n_rep
+            push!(design, (cond = "DT", treat = true, rep = Int64(rep)))
+        end
+    end
+    return design
+end
+
 function _copy_respop_params(params::ResPopParams; rho = params.rho, al = params.al, drug_effect = params.drug_effect)
     return ResPopParams(
         b = params.b,
@@ -58,6 +73,28 @@ function _copy_resdmg_params(params::ResDmgParams; rho = params.rho, drug_effect
     )
 end
 
+function _copy_respop_invivo_params(params::ResPopInVivoParams;
+    rho = params.rho, al = params.al, drug_effect = params.drug_effect,
+    fEG1 = params.fEG1, pEG = params.pEG, sEG = params.sEG)
+
+    return ResPopInVivoParams(
+        b = params.b,
+        d = params.d,
+        rho = rho,
+        mu = params.mu,
+        sig = params.sig,
+        del = params.del,
+        al = al,
+        Dc = params.Dc,
+        k = params.k,
+        psi = params.psi,
+        drug_effect = drug_effect,
+        fEG1 = fEG1,
+        pEG = pEG,
+        sEG = sEG
+    )
+end
+
 function _with_drug_effect(model::ResPop, de::Symbol)
     de == model.params.drug_effect && return model
     return ResPop(_copy_respop_params(model.params; drug_effect = de))
@@ -87,5 +124,15 @@ function _with_drug_effect(model::ResDmg, de::Symbol)
     de == model.params.drug_effect && return model
     params_eff = _copy_resdmg_params(model.params; drug_effect = de)
     return ResDmg(params_eff)
+end
+
+function _with_drug_effect(model::ResPopInVivo, de::Symbol)
+    de == model.params.drug_effect && return model
+    return ResPopInVivo(_copy_respop_invivo_params(model.params; drug_effect = de))
+end
+
+function _with_drug_effect(model::ResPopInVivo_ABM, de::Symbol)
+    de == model.params.drug_effect && return model
+    return ResPopInVivo_ABM(_copy_respop_invivo_params(model.params; drug_effect = de); abm = model.abm)
 end
 

@@ -37,6 +37,34 @@ function ResPopParams(; b, d, rho=0.0, mu, sig, del, al, Dc, k, psi, drug_effect
     )
 end
 
+struct ResPopInVivoParams
+    b::Float64
+    d::Float64
+    rho::Float64
+    mu::Float64
+    sig::Float64
+    del::Float64
+    al::Float64
+    Dc::Float64
+    k::Float64
+    psi::Float64
+    drug_effect::Symbol
+    fEG1::Float64
+    pEG::Float64
+    sEG::Float64
+end
+
+function ResPopInVivoParams(; b, d, rho=0.0, mu, sig, del, al, Dc, k, psi,
+    drug_effect="d", fEG1, pEG, sEG)
+
+    de = normalize_respop_drug_effect(drug_effect)
+    return ResPopInVivoParams(
+        Float64(b), Float64(d), Float64(rho), Float64(mu), Float64(sig), Float64(del),
+        Float64(al), Float64(Dc), Float64(k), Float64(psi), de,
+        Float64(fEG1), Float64(pEG), Float64(sEG)
+    )
+end
+
 struct ResDmgParams
     b::Float64
     d::Float64
@@ -82,7 +110,37 @@ function validate_model_params(params::ResPopParams)
     return params
 end
 
+function validate_model_params(params::ResPopInVivoParams)
+    0.0 <= params.rho <= 1.0 || error("rho must be between 0 and 1.")
+    0.0 <= params.mu <= 1.0 || error("mu must be between 0 and 1.")
+    0.0 <= params.sig <= 1.0 || error("sig must be between 0 and 1.")
+    0.0 <= params.del <= 1.0 || error("del must be between 0 and 1.")
+    0.0 <= params.al <= 1.0 || error("al must be between 0 and 1.")
+    params.psi <= 1.0 || error("psi must be <= 1.0.")
+    0.0 <= (params.al + params.sig) <= 1.0 || error("al and sig must not sum to > 1.0")
+    params.drug_effect in RESPOP_DRUG_EFFECTS || error("ResPopInVivo drug_effect must be :d, :b, or :c")
+    0.0 <= params.fEG1 <= 1.0 || error("fEG1 must be between 0 and 1.")
+    0.0 <= params.pEG <= 1.0 || error("pEG must be between 0 and 1.")
+    0.0 <= params.sEG <= 1.0 || error("sEG must be between 0 and 1.")
+    if params.drug_effect === :b
+        params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
+
+        bR = params.b * (1 - params.del)
+        psi_scale = 1 - params.psi
+        if psi_scale > 0.0
+            params.Dc <= (bR / psi_scale) || error("When drug_effect == :b, Dc*(1-psi) must be <= b*(1-del) to keep resistant birth non-negative. Use drug_effect == :c if stronger drug effects are intended.")
+        end
+    end
+    return params
+end
+
 function validate_model_params_strict(params::ResPopParams)
+    validate_model_params(params)
+    params.psi >= 0.0 || error("psi must be between 0 and 1.")
+    return params
+end
+
+function validate_model_params_strict(params::ResPopInVivoParams)
     validate_model_params(params)
     params.psi >= 0.0 || error("psi must be between 0 and 1.")
     return params
@@ -197,6 +255,8 @@ struct ExperimentParams
     save_at::Float64
     n_rep::Int64
     drug_treatment::Bool
+    inc_control::Bool
+    inc_pot::Bool
     full_sol::Bool
     run_IC::Bool
     IC_n0::Int64
@@ -290,7 +350,7 @@ end
 function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                                     treat_ons, treat_offs, t_keep, Nswitch,
                                     N_trans_switch, save_at, n_rep, drug_treatment,
-                                    full_sol, run_IC, IC_n0, IC_tmax,
+                                    inc_control, inc_pot, full_sol, run_IC, IC_n0, IC_tmax,
                                     IC_treat_on, run_colony, nCol, tCol, ColNmax)
     n0 isa Integer || error("n0 must be an integer.")
     n0 > 0 || error("n0 must be > 0.")
@@ -342,6 +402,8 @@ function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
     n_rep > 0 || error("n_rep must be > 0.")
 
     drug_treatment isa Bool || error("drug_treatment must be Bool.")
+    inc_control isa Bool || error("inc_control must be Bool.")
+    inc_pot isa Bool || error("inc_pot must be Bool.")
     full_sol isa Bool || error("full_sol must be Bool.")
     run_IC isa Bool || error("run_IC must be Bool.")
 
@@ -371,8 +433,9 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                           treat_ons, treat_offs, t_keep, Nswitch,
                           N_trans_switch=1000.0,
                           save_at=0.5, n_rep=4, drug_treatment=true,
-                          full_sol=false, run_IC=false, IC_n0=1000,
-                          IC_tmax=4.0, IC_treat_on=1.0, run_colony=false,
+                          inc_control=false, inc_pot=false, full_sol=false,
+                          run_IC=false, IC_n0=1000, IC_tmax=4.0,
+                          IC_treat_on=1.0, run_colony=false,
                           nCol=1000, tCol=12.0, ColNmax=50)
     validate_experiment_params(
         n0 = n0,
@@ -390,6 +453,8 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         save_at = save_at,
         n_rep = n_rep,
         drug_treatment = drug_treatment,
+        inc_control = inc_control,
+        inc_pot = inc_pot,
         full_sol = full_sol,
         run_IC = run_IC,
         IC_n0 = IC_n0,
@@ -423,6 +488,8 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         Float64(save_at),
         Int64(n_rep),
         Bool(drug_treatment),
+        Bool(inc_control),
+        Bool(inc_pot),
         Bool(full_sol),
         Bool(run_IC),
         Int64(IC_n0),

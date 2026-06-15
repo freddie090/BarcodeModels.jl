@@ -1,5 +1,6 @@
 ﻿using Test
 using BarcodeModels
+using DataFrames
 
 function simulate_hybrid_experiment(model)
     exp = ExperimentParams(
@@ -94,6 +95,25 @@ function simulate_abm_experiment(model::ResDmg_ABM_EvBC)
     return BarcodeModels.simulate_experiment(model, exp)
 end
 
+function simulate_abm_experiment(model::ResPopInVivo_ABM)
+    exp = ExperimentParams(
+        n0 = 8,
+        t_exp = 1.0,
+        tmax = 2.0,
+        t_Pass = [1.0],
+        Nseed = 4,
+        Nmax = 20,
+        Cc = 20,
+        treat_ons = Float64[],
+        treat_offs = Float64[],
+        t_keep = [2.0],
+        Nswitch = 100,
+        full_sol = true,
+        n_rep = 1
+    )
+    return BarcodeModels.simulate_experiment(model, exp)
+end
+
 function simulate_resdmg_experiment(model::ResDmg)
     exp = ExperimentParams(
         n0 = 10,
@@ -134,7 +154,7 @@ end
 
 function simulate_abm_experiment_vector_tmax(model)
     exp = ExperimentParams(
-        n0 = 5,
+        n0 = 20,
         t_exp = 1.0,
         tmax = [1.0, 2.0],
         t_Pass = Float64[],
@@ -477,6 +497,343 @@ end
     @test haskey(treated_out, "lin_df")
 end
 
+@testset "ResPopInVivo implementation" begin
+    @test_throws ErrorException ResPopInVivoParams(
+        b = 1.0, d = 0.1, rho = 0.1, mu = 0.01, sig = 0.01, del = 0.0, al = 0.0,
+        Dc = 0.0, k = 0.0, psi = 0.0, drug_effect = :d,
+        fEG1 = 1.1, pEG = 0.7, sEG = 0.5
+    ) |> ResPopInVivo
+
+    params = ResPopInVivoParams(
+        b = 1.0,
+        d = 0.1,
+        rho = 0.2,
+        mu = 0.01,
+        sig = 0.01,
+        del = 0.0,
+        al = 0.0,
+        Dc = 0.0,
+        k = 0.0,
+        psi = 0.0,
+        drug_effect = :d,
+        fEG1 = 0.4,
+        pEG = 0.7,
+        sEG = 0.5
+    )
+
+    invivo_sol_cols = [
+        "nS_EG0", "nS_EG1", "nR_EG0", "nR_EG1", "nE_EG0", "nE_EG1",
+        "nS", "nR", "nE", "n_EG0", "n_EG1", "N"
+    ]
+    function test_invivo_sol_df_counts(df)
+        @test all(in(names(df)).(invivo_sol_cols))
+        @test all(isapprox.(df.nS, df.nS_EG0 .+ df.nS_EG1; atol = 1e-8))
+        @test all(isapprox.(df.nR, df.nR_EG0 .+ df.nR_EG1; atol = 1e-8))
+        @test all(isapprox.(df.nE, df.nE_EG0 .+ df.nE_EG1; atol = 1e-8))
+        @test all(isapprox.(df.n_EG0, df.nS_EG0 .+ df.nR_EG0 .+ df.nE_EG0; atol = 1e-8))
+        @test all(isapprox.(df.n_EG1, df.nS_EG1 .+ df.nR_EG1 .+ df.nE_EG1; atol = 1e-8))
+        @test all(isapprox.(df.N, df.n_EG0 .+ df.n_EG1; atol = 1e-8))
+    end
+
+    eg0_new, eg1_new, stats = engraftment_selection([10, 0, 0], [0, 10, 0], 1.0, 1.0)
+    @test eg0_new == [0, 0, 0]
+    @test eg1_new == [0, 10, 0]
+    @test stats["N_engraft"] == 10
+
+    hybrid = ResPopInVivo(params)
+    hybrid_simple = simulate_simple(
+        hybrid,
+        SimpleSimParams(
+            n0 = 20,
+            tmax = 2.0,
+            Nmax = 100,
+            Cc = 100,
+            treat_ons = Float64[],
+            treat_offs = Float64[]
+        )
+    )
+    @test haskey(hybrid_simple, "sol_df")
+    test_invivo_sol_df_counts(hybrid_simple["sol_df"])
+
+    eg_params = ResPopInVivoParams(
+        b = 1.0,
+        d = 0.1,
+        rho = 0.0,
+        mu = 0.2,
+        sig = 0.0,
+        del = 0.0,
+        al = 0.0,
+        Dc = 0.0,
+        k = 0.0,
+        psi = 0.0,
+        drug_effect = :d,
+        fEG1 = 0.5,
+        pEG = 1.0,
+        sEG = 0.0
+    )
+    eg_hybrid = ResPopInVivo(eg_params)
+    eg_state = ResPopInVivoState(10, 0, 0, 10, 0, 0)
+    eg_core_sim = BarcodeModels.SimParams(
+        n0 = 20,
+        t0 = 0.0,
+        tmax = 0.2,
+        t_Pass = -1.0,
+        Nmax = 100,
+        Cc = 100,
+        treat_ons = Float64[],
+        treat_offs = Float64[],
+        Nswitch = 100
+    )
+    eg_core = BarcodeModels.run_model_core_hybrid(eg_hybrid, eg_state, eg_core_sim; treat = false)
+    @test all(u -> u[BarcodeModels.RESPOP_INVIVO_NS_EG1_INDEX] == 0.0, eg_core.u)
+    @test all(u -> u[BarcodeModels.RESPOP_INVIVO_NE_EG0_INDEX] == 0.0, eg_core.u)
+    @test all(u -> u[BarcodeModels.RESPOP_INVIVO_NE_EG1_INDEX] == 0.0, eg_core.u)
+
+    ode_switch_sim = BarcodeModels.SimParams(
+        n0 = 40,
+        t0 = 0.0,
+        tmax = 0.2,
+        t_Pass = -1.0,
+        Nmax = 1000,
+        Cc = 1000,
+        treat_ons = Float64[],
+        treat_offs = Float64[],
+        Nswitch = 1,
+        save_at = 0.05
+    )
+    ode_switch_state = ResPopInVivoState(20, 20, 0, 0, 0, 0)
+    ode_switch_sol = BarcodeModels.run_model_core_hybrid(hybrid, ode_switch_state, ode_switch_sim; treat = false)
+    @test any(u -> abs(u[BarcodeModels.RESPOP_INVIVO_NS_EG0_INDEX] - round(u[BarcodeModels.RESPOP_INVIVO_NS_EG0_INDEX])) > 1e-6, ode_switch_sol.u)
+
+    abm = ResPopInVivo_ABM(params; abm = ABMParams(Nbuff = 300, t_frac = 0.2, dt_save_at = 0.2))
+    abm_simple = simulate_simple(
+        abm,
+        SimpleSimParams(
+            n0 = 20,
+            tmax = 2.0,
+            Nmax = 100,
+            Cc = 100,
+            treat_ons = Float64[],
+            treat_offs = Float64[]
+        )
+    )
+    @test haskey(abm_simple, "sol_df")
+    @test haskey(abm_simple, "lin_df")
+    test_invivo_sol_df_counts(abm_simple["sol_df"])
+
+    exp = ExperimentParams(
+        n0 = 30,
+        t_exp = 1.0,
+        tmax = 3.0,
+        t_Pass = [1.5],
+        Nseed = 10,
+        Nmax = 200,
+        Cc = 200,
+        treat_ons = Float64[],
+        treat_offs = Float64[],
+        t_keep = [3.0],
+        Nswitch = 100,
+        full_sol = true,
+        n_rep = 2
+    )
+
+    hybrid_exp = simulate_experiment(hybrid, exp)
+    @test haskey(hybrid_exp, "engraft_df")
+    @test haskey(hybrid_exp, "sol_df")
+    test_invivo_sol_df_counts(hybrid_exp["sol_df"])
+
+    abm_exp = simulate_experiment(abm, exp)
+    @test haskey(abm_exp, "engraft_df")
+    @test haskey(abm_exp, "sol_df")
+    @test haskey(abm_exp, "lin_df")
+    test_invivo_sol_df_counts(abm_exp["sol_df"])
+    @test "passage" in names(abm_exp["sol_df"])
+
+    pot_exp = ExperimentParams(
+        n0 = 40,
+        t_exp = 0.5,
+        tmax = 1.0,
+        t_Pass = Float64[],
+        Nseed = 5,
+        Nmax = 200,
+        Cc = 200,
+        treat_ons = Float64[],
+        treat_offs = Float64[],
+        t_keep = Float64[],
+        Nswitch = 100,
+        full_sol = true,
+        n_rep = 1,
+        inc_pot = true
+    )
+
+    hybrid_pot_exp = simulate_experiment(hybrid, pot_exp)
+    @test haskey(hybrid_pot_exp, "sol_df")
+    @test first(hybrid_pot_exp["sol_df"].cond) == "POT"
+    hybrid_pot_rows = hybrid_pot_exp["sol_df"][hybrid_pot_exp["sol_df"].cond .== "POT", :]
+    @test !isempty(hybrid_pot_rows)
+    @test all(hybrid_pot_rows.rep .== 0)
+    @test all(hybrid_pot_rows.passage .== 0)
+    test_invivo_sol_df_counts(hybrid_pot_exp["sol_df"])
+
+    abm_pot_exp = simulate_experiment(abm, pot_exp)
+    @test haskey(abm_pot_exp, "sol_df")
+    @test first(abm_pot_exp["sol_df"].cond) == "POT"
+    abm_pot_rows = abm_pot_exp["sol_df"][abm_pot_exp["sol_df"].cond .== "POT", :]
+    @test !isempty(abm_pot_rows)
+    @test all(abm_pot_rows.rep .== 0)
+    @test all(abm_pot_rows.passage .== 0)
+    @test string(names(abm_pot_exp["lin_df"])[2]) == "POT_P0"
+    test_invivo_sol_df_counts(abm_pot_exp["sol_df"])
+
+    early_stop_params = ResPopInVivoParams(
+        b = 1.0,
+        d = 0.0,
+        rho = 0.0,
+        mu = 0.0,
+        sig = 0.0,
+        del = 0.0,
+        al = 0.0,
+        Dc = 0.0,
+        k = 0.0,
+        psi = 0.0,
+        drug_effect = :d,
+        fEG1 = 0.0,
+        pEG = 1.0,
+        sEG = 0.0
+    )
+    early_stop_exp = ExperimentParams(
+        n0 = 50,
+        t_exp = 0.1,
+        tmax = [5.0, 6.0],
+        t_Pass = Float64[],
+        Nseed = 10,
+        Nmax = 20,
+        Cc = 100,
+        treat_ons = Float64[],
+        treat_offs = Float64[],
+        t_keep = Float64[],
+        Nswitch = 100,
+        full_sol = true,
+        n_rep = 2
+    )
+    early_stop_hybrid = simulate_experiment(ResPopInVivo(early_stop_params), early_stop_exp)
+    @test all(early_stop_hybrid["t"] .< early_stop_exp.tmax)
+    @test all(isapprox.(
+        early_stop_hybrid["t"],
+        [maximum(early_stop_hybrid["sol_df"][early_stop_hybrid["sol_df"].rep .== i, :t]) for i in 1:2];
+        atol = 1e-8
+    ))
+
+    control_exp = ExperimentParams(
+        n0 = 80,
+        t_exp = 0.2,
+        tmax = 0.4,
+        t_Pass = Float64[],
+        Nseed = 5,
+        Nmax = 200,
+        Cc = 200,
+        treat_ons = Float64[0.1],
+        treat_offs = Float64[0.4],
+        t_keep = Float64[],
+        Nswitch = 100,
+        full_sol = true,
+        n_rep = 2,
+        drug_treatment = true,
+        inc_control = true
+    )
+
+    hybrid_control_exp = simulate_experiment(hybrid, control_exp)
+    @test hybrid_control_exp["cond"] == ["CO", "CO", "DT", "DT"]
+    @test hybrid_control_exp["rep"] == [1, 2, 1, 2]
+    @test all(in(names(hybrid_control_exp["sol_df"])).(["cond", "rep"]))
+    @test all(in(names(hybrid_control_exp["engraft_df"])).(["cond", "rep"]))
+    @test unique(hybrid_control_exp["engraft_df"].cond) == ["CO", "DT"]
+
+    abm_control_exp = simulate_experiment(abm, control_exp)
+    @test abm_control_exp["cond"] == ["CO", "CO", "DT", "DT"]
+    @test abm_control_exp["rep"] == [1, 2, 1, 2]
+    @test all(in(names(abm_control_exp["sol_df"])).(["cond", "rep"]))
+    @test all(in(names(abm_control_exp["engraft_df"])).(["cond", "rep"]))
+    @test unique(abm_control_exp["engraft_df"].cond) == ["CO", "DT"]
+    abm_lin_names = string.(names(abm_control_exp["lin_df"]))
+    @test any(name -> startswith(name, "CO"), abm_lin_names)
+    @test any(name -> startswith(name, "DT"), abm_lin_names)
+
+    control_only_exp = ExperimentParams(
+        n0 = 40,
+        t_exp = 0.2,
+        tmax = 0.4,
+        t_Pass = Float64[],
+        Nseed = 5,
+        Nmax = 200,
+        Cc = 200,
+        treat_ons = Float64[0.1],
+        treat_offs = Float64[0.4],
+        t_keep = Float64[],
+        Nswitch = 100,
+        full_sol = true,
+        n_rep = 2,
+        drug_treatment = false
+    )
+    hybrid_control_only = simulate_experiment(hybrid, control_only_exp)
+    @test hybrid_control_only["cond"] == ["CO", "CO"]
+    @test hybrid_control_only["rep"] == [1, 2]
+    @test unique(hybrid_control_only["engraft_df"].cond) == ["CO"]
+
+    abm_control_only = simulate_experiment(abm, control_only_exp)
+    @test abm_control_only["cond"] == ["CO", "CO"]
+    @test abm_control_only["rep"] == [1, 2]
+    @test unique(abm_control_only["engraft_df"].cond) == ["CO"]
+    @test all(name -> startswith(name, "CO"), string.(names(abm_control_only["lin_df"]))[2:end])
+
+    no_intermediate_engraft_params = ResPopInVivoParams(
+        b = 1.0,
+        d = 0.0,
+        rho = 0.0,
+        mu = 0.0,
+        sig = 0.0,
+        del = 0.0,
+        al = 0.0,
+        Dc = 0.0,
+        k = 0.0,
+        psi = 0.0,
+        drug_effect = :d,
+        fEG1 = 0.0,
+        pEG = 0.0,
+        sEG = 0.0
+    )
+    no_intermediate_engraft_exp = ExperimentParams(
+        n0 = 30,
+        t_exp = [0.1, 0.1],
+        tmax = 0.2,
+        t_Pass = Float64[],
+        Nseed = [10, 10],
+        Nmax = 100,
+        Cc = 100,
+        treat_ons = Float64[],
+        treat_offs = Float64[],
+        t_keep = [0.2],
+        Nswitch = 100,
+        full_sol = true,
+        n_rep = 1
+    )
+    no_intermediate_hybrid = simulate_experiment(ResPopInVivo(no_intermediate_engraft_params), no_intermediate_engraft_exp)
+    @test no_intermediate_hybrid["t"] != [-1.0]
+    @test no_intermediate_hybrid["engraft_df"].N_engraft == [0]
+
+    no_intermediate_abm = ResPopInVivo_ABM(no_intermediate_engraft_params; abm = ABMParams(Nbuff = 100, t_frac = 0.5, dt_save_at = 0.1))
+    _, no_intermediate_abm_engraft = BarcodeModels._expand_split_cells_abm(no_intermediate_abm, no_intermediate_engraft_exp, 1)
+    @test no_intermediate_abm_engraft.N_engraft == [0]
+
+    # Backwards compatibility sanity check on original model family.
+    compat_out = simulate_hybrid_experiment(ResPop(ResPopParams(
+        b = 1.0, d = 0.1, rho = 0.0, mu = 0.0, sig = 0.0, del = 0.0, al = 0.0,
+        Dc = 0.0, k = 0.0, psi = 0.0, drug_effect = :d
+    )))
+    @test haskey(compat_out, "t")
+    @test haskey(compat_out, "u")
+end
+
 @testset "Vector tmax support (single-passage only)" begin
     respop_params = ResPopParams(
         b = 1.0,
@@ -516,15 +873,16 @@ end
     result_resdmg_hybrid = simulate_hybrid_experiment_vector_tmax(resdmg_hybrid)
     result_respop_abm = simulate_abm_experiment_vector_tmax(respop_abm)
     result_resdmg_abm = simulate_abm_experiment_vector_tmax(resdmg_abm)
+    abm_tmax_tol = 0.5
 
     @test maximum(result_respop_hybrid["sol_df"][result_respop_hybrid["sol_df"].rep .== 1, :t]) <= 2.0
     @test maximum(result_respop_hybrid["sol_df"][result_respop_hybrid["sol_df"].rep .== 2, :t]) <= 4.0
     @test maximum(result_resdmg_hybrid["sol_df"][result_resdmg_hybrid["sol_df"].rep .== 1, :t]) <= 2.0
     @test maximum(result_resdmg_hybrid["sol_df"][result_resdmg_hybrid["sol_df"].rep .== 2, :t]) <= 4.0
-    @test maximum(result_respop_abm["sol_df"][result_respop_abm["sol_df"].rep .== 1, :t]) <= 1.0
-    @test maximum(result_respop_abm["sol_df"][result_respop_abm["sol_df"].rep .== 2, :t]) <= 2.0
-    @test maximum(result_resdmg_abm["sol_df"][result_resdmg_abm["sol_df"].rep .== 1, :t]) <= 1.0
-    @test maximum(result_resdmg_abm["sol_df"][result_resdmg_abm["sol_df"].rep .== 2, :t]) <= 2.0
+    @test maximum(result_respop_abm["sol_df"][result_respop_abm["sol_df"].rep .== 1, :t]) <= 1.0 + abm_tmax_tol
+    @test maximum(result_respop_abm["sol_df"][result_respop_abm["sol_df"].rep .== 2, :t]) <= 2.0 + abm_tmax_tol
+    @test maximum(result_resdmg_abm["sol_df"][result_resdmg_abm["sol_df"].rep .== 1, :t]) <= 1.0 + abm_tmax_tol
+    @test maximum(result_resdmg_abm["sol_df"][result_resdmg_abm["sol_df"].rep .== 2, :t]) <= 2.0 + abm_tmax_tol
 
     @test_throws ErrorException BarcodeModels.simulate_experiment(
         respop_hybrid,

@@ -32,10 +32,37 @@ Treat the model specification document as the authoritative description of the r
    * adding new parameters
    * adding new state variables
    * adding new outputs
-4. Produce an implementation plan before writing code.
-5. Implement incrementally, reusing existing abstractions wherever possible.
-6. Add or update tests.
-7. Verify that existing workflows remain functional.
+4. Classify each required change by architectural layer:
+   * biological model core
+   * simulation method
+   * experiment design/orchestration
+   * output schema
+   * tests/documentation only
+5. Produce an implementation plan before writing code.
+6. Implement incrementally, reusing existing abstractions wherever possible.
+7. Add or update tests.
+8. Verify that existing workflows remain functional.
+
+## Integration Audit Checklist
+
+Before considering a model implementation complete, check every relevant integration point:
+
+* parameter type(s), constructors and validation
+* state type(s) and component-array conversion
+* model class constructor(s)
+* package exports and dispatch routing
+* Hybrid core implementation
+* ABM core implementation
+* `simulate_simple`
+* `simulate_experiment`
+* output schema assembly:
+  * `sol_df`
+  * `lin_df`
+  * `engraft_df` or other model-specific tables
+  * `t`, `u` and any metadata vectors
+* README or user-facing documentation
+* implementation record in `model_specs/`
+* focused and full test coverage
 
 ## Implementation Rules
 
@@ -46,6 +73,18 @@ Treat the model specification document as the authoritative description of the r
 * Prefer consistency and maintainability over cleverness.
 * Minimise code duplication.
 * Keep biological assumptions local to the biological model layer.
+* Keep experiment options, replicate/condition orchestration, sampling schedules and output labelling in the simulation/experiment layer.
+* For features implemented in more than one model class, define a shared public output contract and keep Hybrid/ABM outputs aligned unless the model specification explicitly requires a difference.
+
+## Output Schema Requirements
+
+When adding or changing outputs:
+
+* Define expected column names and returned dictionary keys before implementation.
+* Check simple and experiment workflows separately.
+* Include metadata columns/vectors needed to interpret replicate, passage, condition, treatment or sampling status.
+* Add internal consistency tests for derived columns rather than only testing that columns exist.
+* Preserve backwards-compatible outputs unless the specification explicitly requires a breaking change.
 
 ## Testing Requirements
 
@@ -59,6 +98,14 @@ At minimum verify:
 * output generation
 * backwards compatibility with existing workflows
 
+For Julia testing:
+
+* Prefer project-local depot/test scripts when the repository provides them.
+* Avoid installing dependencies into base Julia unless the user explicitly requests it.
+* Run focused tests first when useful, then run the full suite before final handoff.
+* Restart Julia after method signature, struct, dispatch or export changes if observed behaviour appears stale.
+* Clearly separate related failures from unrelated pre-existing failures before editing unrelated code.
+
 ## Expected Outputs
 
 When implementing new functionality, provide:
@@ -68,6 +115,7 @@ When implementing new functionality, provide:
 3. New files created.
 4. Tests added or modified.
 5. Architectural justification for major design decisions.
+6. Documentation and implementation-record updates when public API, output schema, parameters or examples change.
 
 After successful implementation, create a companion implementation record within the model_specs directory.
 
@@ -87,4 +135,4 @@ This document serves as a permanent record of what was actually implemented. A t
 
 For all implementation tasks, also consult:
 
-- `barcode-models-codebase`
+- `barcode-model-codebase`

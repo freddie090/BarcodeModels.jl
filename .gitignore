@@ -4,4 +4,11 @@ test/manual_tests_evbc.jl
 test/manual_test_helpers.jl
 test/manual_test_helpers.jl
 test/manual_tests_evbc.jl
+test/manual_test_invivo.jl
+test/manual_test_plotting.jl
+julia_testing_venv/
 model_specs/
+run_tests_codex_local.ps1
+example_project/
+projects/
+project_specs/

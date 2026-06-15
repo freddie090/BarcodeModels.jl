@@ -17,10 +17,16 @@ simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwargs...) =
 simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwargs...) =
     _simulate_experiment_hybrid(model, exp; kwargs...)
 
+simulate_experiment_hybrid(model::ResPopInVivo, exp::ExperimentParams; kwargs...) =
+    _simulate_experiment_hybrid(model, exp; kwargs...)
+
 simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwargs...) =
     _simulate_experiment_abm(model, exp; kwargs...)
 
 simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwargs...) =
+    _simulate_experiment_abm(model, exp; kwargs...)
+
+simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams; kwargs...) =
     _simulate_experiment_abm(model, exp; kwargs...)
 
 simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams; kwargs...) =
@@ -48,10 +54,16 @@ simulate_simple_hybrid(model::ResPop, sim::SimpleSimParams; kwargs...) =
 simulate_simple_hybrid(model::ResDmg, sim::SimpleSimParams; kwargs...) =
     _simulate_simple_hybrid(model, sim; kwargs...)
 
+simulate_simple_hybrid(model::ResPopInVivo, sim::SimpleSimParams; kwargs...) =
+    _simulate_simple_hybrid(model, sim; kwargs...)
+
 simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...) =
     _simulate_simple_abm(model, sim; kwargs...)
 
 simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...) =
+    _simulate_simple_abm(model, sim; kwargs...)
+
+simulate_simple_abm(model::ResPopInVivo_ABM, sim::SimpleSimParams; kwargs...) =
     _simulate_simple_abm(model, sim; kwargs...)
 
 simulate_simple_abm(model::ResPop_ABM_EvBC, sim::SimpleSimParams; kwargs...) =

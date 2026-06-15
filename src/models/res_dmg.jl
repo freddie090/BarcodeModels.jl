@@ -635,7 +635,7 @@ function run_model_core_hybrid(model::ResDmg, state::ResDmgState, sim::SimParams
     end
     tstops = isempty(event_times) ? base_tstops : sort(unique(vcat(base_tstops, event_times)))
 
-    sol = @suppress solve(sjm_prob, Tsit5(), callback = cbs, tstops = tstops)
+    sol = @maybe_suppress_solver solve(sjm_prob, Tsit5(), callback = cbs, tstops = tstops)
 
     return sol
 end

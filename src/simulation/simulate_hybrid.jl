@@ -723,6 +723,324 @@ function _simulate_simple_hybrid(model::ResDmg, sim::SimpleSimParams; kwargs...)
     return Dict("sol_df" => sol_df)
 end
 
+function _seed_invivo_hybrid_counts(n0::Int64, rho::Float64, fEG1::Float64)
+    nR = Int64(round(rho * n0))
+    nS = n0 - nR
+    nE = 0
+
+    nEG1 = clamp(Int64(round(n0 * fEG1)), 0, n0)
+    eg1 = multivariate_hypergeometric_draw([nS, nR, nE], nEG1)
+    eg0 = [nS - eg1[1], nR - eg1[2], nE - eg1[3]]
+
+    return eg0, eg1
+end
+
+function _run_invivo_hybrid_segment(model::ResPopInVivo,
+    eg0::Vector{Int64}, eg1::Vector{Int64},
+    tmax::Float64, exp::ExperimentParams;
+    save_at::Float64, treat::Bool, pass_num::Int64)
+
+    state = ResPopInVivoState(
+        eg0[1], eg1[1],
+        eg0[2], eg1[2],
+        eg0[3], eg1[3];
+        gam = 0.0,
+        pass_num = pass_num
+    )
+
+    sim = SimParams(
+        n0 = sum(eg0) + sum(eg1),
+        t0 = 0.0,
+        tmax = tmax,
+        t_Pass = -1.0,
+        Nmax = exp.Nmax,
+        Cc = exp.Cc,
+        Nswitch = exp.Nswitch,
+        N_trans_switch = exp.N_trans_switch,
+        treat_ons = exp.treat_ons,
+        treat_offs = exp.treat_offs,
+        save_at = save_at,
+        treat = treat
+    )
+
+    return run_model_core_hybrid(model, state, sim; treat = treat)
+end
+
+_invivo_counts_from_u(u) = Int64[
+    round(u[RESPOP_INVIVO_NS_EG0_INDEX]),
+    round(u[RESPOP_INVIVO_NR_EG0_INDEX]),
+    round(u[RESPOP_INVIVO_NE_EG0_INDEX])
+], Int64[
+    round(u[RESPOP_INVIVO_NS_EG1_INDEX]),
+    round(u[RESPOP_INVIVO_NR_EG1_INDEX]),
+    round(u[RESPOP_INVIVO_NE_EG1_INDEX])
+]
+
+_invivo_total_from_u(u) =
+    u[RESPOP_INVIVO_NS_EG0_INDEX] + u[RESPOP_INVIVO_NS_EG1_INDEX] +
+    u[RESPOP_INVIVO_NR_EG0_INDEX] + u[RESPOP_INVIVO_NR_EG1_INDEX] +
+    u[RESPOP_INVIVO_NE_EG0_INDEX] + u[RESPOP_INVIVO_NE_EG1_INDEX]
+
+_invivo_nS_from_u(u) = u[RESPOP_INVIVO_NS_EG0_INDEX] + u[RESPOP_INVIVO_NS_EG1_INDEX]
+_invivo_nR_from_u(u) = u[RESPOP_INVIVO_NR_EG0_INDEX] + u[RESPOP_INVIVO_NR_EG1_INDEX]
+_invivo_nE_from_u(u) = u[RESPOP_INVIVO_NE_EG0_INDEX] + u[RESPOP_INVIVO_NE_EG1_INDEX]
+_invivo_nEG0_from_u(u) = u[RESPOP_INVIVO_NS_EG0_INDEX] + u[RESPOP_INVIVO_NR_EG0_INDEX] + u[RESPOP_INVIVO_NE_EG0_INDEX]
+_invivo_nEG1_from_u(u) = u[RESPOP_INVIVO_NS_EG1_INDEX] + u[RESPOP_INVIVO_NR_EG1_INDEX] + u[RESPOP_INVIVO_NE_EG1_INDEX]
+
+function _invivo_hybrid_sol_df(sol, t_offset::Float64; cond::String, rep::Int64, passage::Int64)
+    return DataFrame(
+        t = sol.t .+ t_offset,
+        nS_EG0 = map(x -> x[RESPOP_INVIVO_NS_EG0_INDEX], sol.u),
+        nS_EG1 = map(x -> x[RESPOP_INVIVO_NS_EG1_INDEX], sol.u),
+        nR_EG0 = map(x -> x[RESPOP_INVIVO_NR_EG0_INDEX], sol.u),
+        nR_EG1 = map(x -> x[RESPOP_INVIVO_NR_EG1_INDEX], sol.u),
+        nE_EG0 = map(x -> x[RESPOP_INVIVO_NE_EG0_INDEX], sol.u),
+        nE_EG1 = map(x -> x[RESPOP_INVIVO_NE_EG1_INDEX], sol.u),
+        nS = map(_invivo_nS_from_u, sol.u),
+        nR = map(_invivo_nR_from_u, sol.u),
+        nE = map(_invivo_nE_from_u, sol.u),
+        n_EG0 = map(_invivo_nEG0_from_u, sol.u),
+        n_EG1 = map(_invivo_nEG1_from_u, sol.u),
+        N = map(_invivo_total_from_u, sol.u),
+        cond = cond,
+        rep = rep,
+        passage = passage
+    )
+end
+
+function _simulate_experiment_hybrid(model::ResPopInVivo, exp::ExperimentParams; kwargs...)
+    params = model.params
+    save_at = _kw(kwargs, :save_at, exp.save_at)
+    n_rep = _kw(kwargs, :n_rep, exp.n_rep)
+    drug_treatment = _kw(kwargs, :drug_treatment, exp.drug_treatment)
+    inc_control = _kw(kwargs, :inc_control, exp.inc_control)
+    inc_pot = _kw(kwargs, :inc_pot, exp.inc_pot)
+    full_sol = _kw(kwargs, :full_sol, exp.full_sol)
+    de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, params.drug_effect))
+
+    _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
+    _validate_tmax_length(exp.tmax, n_rep)
+
+    model_eff = _with_drug_effect(model, de)
+
+    if params.psi < 0.0
+        if full_sol
+            error("psi must be between 0 and 1.")
+        end
+        return Dict("t" => [-1.0], "u" => [-1.0])
+    end
+
+    eg0, eg1 = _seed_invivo_hybrid_counts(exp.n0, params.rho, params.fEG1)
+    pot_sol_dfs = DataFrame[]
+    pot_t_offset = 0.0
+
+    if (exp.t_exp isa AbstractVector) && (exp.Nseed isa AbstractVector)
+        @assert length(exp.t_exp) == length(exp.Nseed) "Length of t_exp and Nseed vectors must match."
+        for i in 1:(length(exp.t_exp) - 1)
+            seg = _run_invivo_hybrid_segment(model_eff, eg0, eg1, exp.t_exp[i], exp;
+                                             save_at = save_at, treat = false, pass_num = 1)
+            if inc_pot
+                push!(pot_sol_dfs, _invivo_hybrid_sol_df(seg, pot_t_offset;
+                                                         cond = "POT", rep = 0, passage = 0))
+                pot_t_offset += last(seg.t)
+            end
+            u_end = last(seg.u)
+            eg0, eg1 = _invivo_counts_from_u(u_end)
+
+            if sum(eg0) + sum(eg1) < exp.Nseed[i]
+                return Dict("t" => [-1.0], "u" => [-1.0])
+            end
+
+            split_draw = multivariate_hypergeometric_draw(vcat(eg0, eg1), exp.Nseed[i])
+            eg0 = Int64[split_draw[1], split_draw[2], split_draw[3]]
+            eg1 = Int64[split_draw[4], split_draw[5], split_draw[6]]
+        end
+
+        seg = _run_invivo_hybrid_segment(model_eff, eg0, eg1, exp.t_exp[end], exp;
+                                         save_at = save_at, treat = false, pass_num = 1)
+        if inc_pot
+            push!(pot_sol_dfs, _invivo_hybrid_sol_df(seg, pot_t_offset;
+                                                     cond = "POT", rep = 0, passage = 0))
+        end
+        u_end = last(seg.u)
+        eg0, eg1 = _invivo_counts_from_u(u_end)
+        nseed_last = exp.Nseed[end]
+    elseif (exp.t_exp isa Real) && (exp.Nseed isa Integer)
+        seg = _run_invivo_hybrid_segment(model_eff, eg0, eg1, Float64(exp.t_exp), exp;
+                                         save_at = save_at, treat = false, pass_num = 1)
+        if inc_pot
+            push!(pot_sol_dfs, _invivo_hybrid_sol_df(seg, pot_t_offset;
+                                                     cond = "POT", rep = 0, passage = 0))
+        end
+        u_end = last(seg.u)
+        eg0, eg1 = _invivo_counts_from_u(u_end)
+        nseed_last = exp.Nseed
+    else
+        error("t_exp and Nseed must either both be scalars or both be vectors of the same length.")
+    end
+
+    rep_design = _experiment_condition_design(drug_treatment, inc_control, n_rep)
+    total_available = sum(eg0) + sum(eg1)
+    total_available >= (nseed_last * length(rep_design)) || return Dict("t" => [-1.0], "u" => [-1.0])
+
+    reps = Vector{NamedTuple{(:cond, :treat, :rep, :eg0, :eg1), Tuple{String, Bool, Int64, Vector{Int64}, Vector{Int64}}}}(undef, length(rep_design))
+    pool = vcat(eg0, eg1)
+    engraft_rows = DataFrame[]
+
+    for i in eachindex(rep_design)
+        design = rep_design[i]
+        split_draw = multivariate_hypergeometric_draw(pool, nseed_last)
+        for j in eachindex(pool)
+            pool[j] -= split_draw[j]
+        end
+
+        rep_eg0 = Int64[split_draw[1], split_draw[2], split_draw[3]]
+        rep_eg1 = Int64[split_draw[4], split_draw[5], split_draw[6]]
+
+        rep_eg0, rep_eg1, stats = engraftment_selection(rep_eg0, rep_eg1, params.pEG, params.sEG)
+        push!(engraft_rows, DataFrame(cond = design.cond,
+                                      rep = design.rep,
+                                      passage = 1,
+                                      N_engraft = stats["N_engraft"],
+                                      nEG0_engraft = stats["nEG0_engraft"],
+                                      nEG1_engraft = stats["nEG1_engraft"]))
+        reps[i] = (cond = design.cond, treat = design.treat, rep = design.rep,
+                   eg0 = rep_eg0, eg1 = rep_eg1)
+    end
+
+    t_pass_vec = if exp.t_Pass isa AbstractVector
+        Vector{Float64}(exp.t_Pass)
+    else
+        Float64(exp.t_Pass) < 0.0 ? Float64[] : [Float64(exp.t_Pass)]
+    end
+    t_pass_vec = sort(unique(t_pass_vec))
+    sol_dfs = DataFrame[]
+    append!(sol_dfs, pot_sol_dfs)
+    fin_t_outs = Float64[]
+    fin_u_outs = Float64[]
+    fin_cond_outs = String[]
+    fin_rep_outs = Int64[]
+
+    for rec in reps
+        rep_tmax = _replicate_tmax(exp.tmax, n_rep, rec.rep)
+        boundaries = vcat([0.0], filter(x -> x < rep_tmax, t_pass_vec), [rep_tmax])
+        eg0_rep = rec.eg0
+        eg1_rep = rec.eg1
+        t_offset = 0.0
+        realised_t = 0.0
+
+        for seg_idx in 1:(length(boundaries) - 1)
+            seg_t = boundaries[seg_idx + 1] - boundaries[seg_idx]
+            seg_t <= 0.0 && continue
+
+            seg_sol = _run_invivo_hybrid_segment(model_eff, eg0_rep, eg1_rep, seg_t, exp;
+                                                 save_at = save_at,
+                                                 treat = rec.treat,
+                                                 pass_num = seg_idx)
+            realised_t = t_offset + last(seg_sol.t)
+
+            if full_sol
+                push!(sol_dfs, _invivo_hybrid_sol_df(seg_sol, t_offset;
+                                                     cond = rec.cond, rep = rec.rep,
+                                                     passage = seg_idx))
+            end
+
+            u_end = last(seg_sol.u)
+            eg0_rep, eg1_rep = _invivo_counts_from_u(u_end)
+            t_offset += seg_t
+
+            if seg_idx < (length(boundaries) - 1)
+                n_curr = sum(eg0_rep) + sum(eg1_rep)
+                if n_curr < nseed_last
+                    break
+                end
+                pass_draw = multivariate_hypergeometric_draw(vcat(eg0_rep, eg1_rep), nseed_last)
+                eg0_rep = Int64[pass_draw[1], pass_draw[2], pass_draw[3]]
+                eg1_rep = Int64[pass_draw[4], pass_draw[5], pass_draw[6]]
+                eg0_rep, eg1_rep, stats = engraftment_selection(eg0_rep, eg1_rep, params.pEG, params.sEG)
+
+                push!(engraft_rows, DataFrame(cond = rec.cond,
+                                              rep = rec.rep,
+                                              passage = seg_idx + 1,
+                                              N_engraft = stats["N_engraft"],
+                                              nEG0_engraft = stats["nEG0_engraft"],
+                                              nEG1_engraft = stats["nEG1_engraft"]))
+            end
+        end
+
+        push!(fin_t_outs, realised_t)
+        push!(fin_u_outs, sum(eg0_rep) + sum(eg1_rep))
+        push!(fin_cond_outs, rec.cond)
+        push!(fin_rep_outs, rec.rep)
+    end
+
+    out = Dict{String, Any}(
+        "t" => fin_t_outs,
+        "u" => fin_u_outs,
+        "cond" => fin_cond_outs,
+        "rep" => fin_rep_outs,
+        "engraft_df" => isempty(engraft_rows) ? DataFrame(cond = String[], rep = Int[], passage = Int[], N_engraft = Int[], nEG0_engraft = Int[], nEG1_engraft = Int[]) : vcat(engraft_rows...)
+    )
+
+    if full_sol || inc_pot
+        out["sol_df"] = isempty(sol_dfs) ? DataFrame() : vcat(sol_dfs...)
+    end
+    return out
+end
+
+function _simulate_simple_hybrid(model::ResPopInVivo, sim::SimpleSimParams; kwargs...)
+    params = model.params
+    save_at = _kw(kwargs, :save_at, sim.save_at)
+    drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
+    de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, params.drug_effect))
+
+    model_eff = _with_drug_effect(model, de)
+    eg0, eg1 = _seed_invivo_hybrid_counts(sim.n0, params.rho, params.fEG1)
+
+    state = ResPopInVivoState(
+        eg0[1], eg1[1],
+        eg0[2], eg1[2],
+        eg0[3], eg1[3];
+        gam = 0.0,
+        pass_num = 1
+    )
+
+    sim_eff = SimParams(
+        n0 = sim.n0,
+        t0 = 0.0,
+        tmax = sim.tmax,
+        t_Pass = -1.0,
+        Nmax = sim.Nmax,
+        Cc = sim.Cc,
+        Nswitch = sim.Nswitch,
+        N_trans_switch = sim.N_trans_switch,
+        treat_ons = sim.treat_ons,
+        treat_offs = sim.treat_offs,
+        save_at = save_at,
+        treat = drug_treatment,
+    )
+
+    sol = run_model_core_hybrid(model_eff, state, sim_eff; treat = drug_treatment)
+
+    sol_df = DataFrame(
+        t = sol.t,
+        nS_EG0 = map(x -> x[RESPOP_INVIVO_NS_EG0_INDEX], sol.u),
+        nS_EG1 = map(x -> x[RESPOP_INVIVO_NS_EG1_INDEX], sol.u),
+        nR_EG0 = map(x -> x[RESPOP_INVIVO_NR_EG0_INDEX], sol.u),
+        nR_EG1 = map(x -> x[RESPOP_INVIVO_NR_EG1_INDEX], sol.u),
+        nE_EG0 = map(x -> x[RESPOP_INVIVO_NE_EG0_INDEX], sol.u),
+        nE_EG1 = map(x -> x[RESPOP_INVIVO_NE_EG1_INDEX], sol.u),
+        nS = map(_invivo_nS_from_u, sol.u),
+        nR = map(_invivo_nR_from_u, sol.u),
+        nE = map(_invivo_nE_from_u, sol.u),
+        n_EG0 = map(_invivo_nEG0_from_u, sol.u),
+        n_EG1 = map(_invivo_nEG1_from_u, sol.u),
+        N = map(_invivo_total_from_u, sol.u)
+    )
+
+    return Dict("sol_df" => sol_df)
+end
+
 
 
 

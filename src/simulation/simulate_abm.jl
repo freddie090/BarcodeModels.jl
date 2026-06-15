@@ -3,22 +3,79 @@
     Nvec::Vector{Int64}, nS_vec::Vector{Int64}, nR_vec::Vector{Int64}, nE_vec::Vector{Int64},
     tvec::Vector{Float64}, Pvec::Vector{Int64};
     sub_sample_cells::Bool = false, K::Int64 = 0,
-    samp_cell_lin_df_vec::Vector{DataFrame} = DataFrame[])
+    samp_cell_lin_df_vec::Vector{DataFrame} = DataFrame[],
+    cond::String = "DT")
 
     live_cells = alive_cells(cells)
-    bc_df = get_counts(live_cells, string("DT", rep, "_P", curr_P))
+    bc_df = get_counts(live_cells, string(cond, rep, "_P", curr_P))
     push!(cell_lin_df_vec, bc_df)
 
     if sub_sample_cells
         if K <= length(live_cells)
             samp_cells = sample(live_cells, K, replace = false)
-            push!(samp_cell_lin_df_vec, get_counts(samp_cells, string("DT", rep, "_P", curr_P)))
+            push!(samp_cell_lin_df_vec, get_counts(samp_cells, string(cond, rep, "_P", curr_P)))
         else
-            push!(samp_cell_lin_df_vec, get_counts(live_cells, string("DT", rep, "_P", curr_P)))
+            push!(samp_cell_lin_df_vec, get_counts(live_cells, string(cond, rep, "_P", curr_P)))
         end
     end
 
     update_track_vec!(kmc_out, Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec)
+end
+
+function _append_invivo_abm_eg_outputs!(kmc_out,
+    nS_EG0_vec::Vector{Int64}, nS_EG1_vec::Vector{Int64},
+    nR_EG0_vec::Vector{Int64}, nR_EG1_vec::Vector{Int64},
+    nE_EG0_vec::Vector{Int64}, nE_EG1_vec::Vector{Int64})
+
+    append!(nS_EG0_vec, kmc_out.S_EG0_vec)
+    append!(nS_EG1_vec, kmc_out.S_EG1_vec)
+    append!(nR_EG0_vec, kmc_out.R_EG0_vec)
+    append!(nR_EG1_vec, kmc_out.R_EG1_vec)
+    append!(nE_EG0_vec, kmc_out.E_EG0_vec)
+    append!(nE_EG1_vec, kmc_out.E_EG1_vec)
+    nothing
+end
+
+function _append_invivo_abm_solution_outputs!(kmc_out,
+    Nvec::Vector{Int64}, nS_vec::Vector{Int64}, nR_vec::Vector{Int64}, nE_vec::Vector{Int64},
+    tvec::Vector{Float64}, Pvec::Vector{Int64},
+    nS_EG0_vec::Vector{Int64}, nS_EG1_vec::Vector{Int64},
+    nR_EG0_vec::Vector{Int64}, nR_EG1_vec::Vector{Int64},
+    nE_EG0_vec::Vector{Int64}, nE_EG1_vec::Vector{Int64};
+    t_offset::Float64, passage::Int64)
+
+    append!(Nvec, kmc_out.Nvec)
+    append!(nS_vec, kmc_out.Svec)
+    append!(nR_vec, kmc_out.Rvec)
+    append!(nE_vec, kmc_out.Evec)
+    append!(tvec, kmc_out.tvec .+ t_offset)
+    append!(Pvec, fill(passage, length(kmc_out.Pvec)))
+    _append_invivo_abm_eg_outputs!(kmc_out,
+                                   nS_EG0_vec, nS_EG1_vec,
+                                   nR_EG0_vec, nR_EG1_vec,
+                                   nE_EG0_vec, nE_EG1_vec)
+    nothing
+end
+
+function _invivo_abm_sol_df(sim::Dict; cond::String, rep::Int64)
+    return DataFrame(
+        t = sim["tvec"],
+        nS_EG0 = sim["nS_EG0_vec"],
+        nS_EG1 = sim["nS_EG1_vec"],
+        nR_EG0 = sim["nR_EG0_vec"],
+        nR_EG1 = sim["nR_EG1_vec"],
+        nE_EG0 = sim["nE_EG0_vec"],
+        nE_EG1 = sim["nE_EG1_vec"],
+        nS = sim["nS_vec"],
+        nR = sim["nR_vec"],
+        nE = sim["nE_vec"],
+        n_EG0 = sim["nS_EG0_vec"] .+ sim["nR_EG0_vec"] .+ sim["nE_EG0_vec"],
+        n_EG1 = sim["nS_EG1_vec"] .+ sim["nR_EG1_vec"] .+ sim["nE_EG1_vec"],
+        N = sim["Nvec"],
+        cond = cond,
+        rep = rep,
+        passage = sim["Pvec"]
+    )
 end
 
 function _passage_times(t_Pass::Union{Float64, Vector{Float64}}, tmax::Float64)
@@ -1188,6 +1245,491 @@ function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...
         nDS = sim_out["nDS_vec"],
         nDR = sim_out["nDR_vec"],
         nR = sim_out["nR_vec"]
+    )
+
+    return Dict(
+        "lin_df" => join_dfs(sim_out["cell_lin_df_vec"], "bc"),
+        "sol_df" => sol_df
+    )
+end
+
+function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams, n_rep::Int64;
+    R_real::String = "b",
+    drug_effect::Symbol = model.params.drug_effect,
+    skew_lib::Bool = model.abm.skew_lib,
+    bc_unif::Float64 = model.abm.bc_unif,
+    Nbc::Int64 = model.abm.Nbc,
+    dt_save_at::Float64 = model.abm.dt_save_at,
+    t_frac::Float64 = model.abm.t_frac,
+    rep_design = _experiment_condition_design(true, false, n_rep),
+    inc_pot::Bool = false,
+    pot_outputs = nothing)
+
+    Nbuff = model.abm.Nbuff
+    exp_cells = seed_invivo_cells(exp.n0, model.params.rho, model.params.fEG1, Nbuff;
+                                  skew_lib = skew_lib, bc_unif = bc_unif, Nbc = Nbc)
+
+    expansion_model = ResPopInVivo_ABM(_copy_respop_invivo_params(model.params; al = 0.0, drug_effect = drug_effect);
+                                       abm = model.abm)
+    pot_sim = Dict(
+        "Nvec" => Int64[],
+        "tvec" => Float64[],
+        "Pvec" => Int64[],
+        "nS_vec" => Int64[],
+        "nR_vec" => Int64[],
+        "nE_vec" => Int64[],
+        "nS_EG0_vec" => Int64[],
+        "nS_EG1_vec" => Int64[],
+        "nR_EG0_vec" => Int64[],
+        "nR_EG1_vec" => Int64[],
+        "nE_EG0_vec" => Int64[],
+        "nE_EG1_vec" => Int64[]
+    )
+    pot_t_offset = 0.0
+
+    if (exp.t_exp isa AbstractVector) && (exp.Nseed isa AbstractVector)
+        @assert length(exp.t_exp) == length(exp.Nseed) "t_exp and Nseed vectors must be of same length"
+
+        for i in 1:(length(exp.t_exp) - 1)
+            stage_sim = ABMSimParams(
+                t0 = 0.0,
+                tmax = Float64(exp.t_exp[i]),
+                Nmax = exp.Nmax,
+                Cc = exp.Cc,
+                treat_ons = [0.0],
+                treat_offs = [0.0],
+                dt_save_at = dt_save_at,
+                R_real = R_real,
+                t_frac = t_frac,
+                Passage = 1,
+                drug_effect = drug_effect
+            )
+            kmc_out = run_model_core_abm(expansion_model, ResPopInVivoABMState(exp_cells), stage_sim; treat = false)
+            if inc_pot
+                _append_invivo_abm_solution_outputs!(kmc_out,
+                                                     pot_sim["Nvec"], pot_sim["nS_vec"], pot_sim["nR_vec"], pot_sim["nE_vec"],
+                                                     pot_sim["tvec"], pot_sim["Pvec"],
+                                                     pot_sim["nS_EG0_vec"], pot_sim["nS_EG1_vec"],
+                                                     pot_sim["nR_EG0_vec"], pot_sim["nR_EG1_vec"],
+                                                     pot_sim["nE_EG0_vec"], pot_sim["nE_EG1_vec"];
+                                                     t_offset = pot_t_offset, passage = 0)
+                pot_t_offset += last(kmc_out.tvec)
+            end
+
+            exp_cells = alive_cells(exp_cells)
+            length(exp_cells) >= exp.Nseed[i] || error("Not enough cells after expansion at stage $i for bottlenecking.")
+            exp_cells = sample(exp_cells, Int64(exp.Nseed[i]), replace = false)
+            extend_with_dead_cells!(exp_cells, Nbuff, make_dead_cell_invivo)
+        end
+
+        final_sim = ABMSimParams(
+            t0 = 0.0,
+            tmax = Float64(exp.t_exp[end]),
+            Nmax = exp.Nmax,
+            Cc = exp.Cc,
+            treat_ons = [0.0],
+            treat_offs = [0.0],
+            dt_save_at = dt_save_at,
+            R_real = R_real,
+            t_frac = t_frac,
+            Passage = 1,
+            drug_effect = drug_effect
+        )
+        kmc_out = run_model_core_abm(expansion_model, ResPopInVivoABMState(exp_cells), final_sim; treat = false)
+        if inc_pot
+            _append_invivo_abm_solution_outputs!(kmc_out,
+                                                 pot_sim["Nvec"], pot_sim["nS_vec"], pot_sim["nR_vec"], pot_sim["nE_vec"],
+                                                 pot_sim["tvec"], pot_sim["Pvec"],
+                                                 pot_sim["nS_EG0_vec"], pot_sim["nS_EG1_vec"],
+                                                 pot_sim["nR_EG0_vec"], pot_sim["nR_EG1_vec"],
+                                                 pot_sim["nE_EG0_vec"], pot_sim["nE_EG1_vec"];
+                                                 t_offset = pot_t_offset, passage = 0)
+        end
+        exp_cells = alive_cells(exp_cells)
+        final_seed = Int64(exp.Nseed[end])
+    elseif (exp.t_exp isa Real) && (exp.Nseed isa Integer)
+        final_sim = ABMSimParams(
+            t0 = 0.0,
+            tmax = Float64(exp.t_exp),
+            Nmax = exp.Nmax,
+            Cc = exp.Cc,
+            treat_ons = [0.0],
+            treat_offs = [0.0],
+            dt_save_at = dt_save_at,
+            R_real = R_real,
+            t_frac = t_frac,
+            Passage = 1,
+            drug_effect = drug_effect
+        )
+        kmc_out = run_model_core_abm(expansion_model, ResPopInVivoABMState(exp_cells), final_sim; treat = false)
+        if inc_pot
+            _append_invivo_abm_solution_outputs!(kmc_out,
+                                                 pot_sim["Nvec"], pot_sim["nS_vec"], pot_sim["nR_vec"], pot_sim["nE_vec"],
+                                                 pot_sim["tvec"], pot_sim["Pvec"],
+                                                 pot_sim["nS_EG0_vec"], pot_sim["nS_EG1_vec"],
+                                                 pot_sim["nR_EG0_vec"], pot_sim["nR_EG1_vec"],
+                                                 pot_sim["nE_EG0_vec"], pot_sim["nE_EG1_vec"];
+                                                 t_offset = pot_t_offset, passage = 0)
+        end
+        exp_cells = alive_cells(exp_cells)
+        final_seed = Int64(exp.Nseed)
+    else
+        error("t_exp and Nseed must both be scalars or both be vectors of equal length.")
+    end
+
+    if inc_pot && pot_outputs !== nothing
+        pot_outputs["sol_df"] = _invivo_abm_sol_df(pot_sim; cond = "POT", rep = 0)
+        pot_outputs["lin_df"] = get_counts(exp_cells, "POT_P0")
+    end
+
+    n_batches = length(rep_design)
+    n_batches * final_seed <= length(exp_cells) || error("Not enough cells for $n_batches replicates of size $final_seed.")
+    rep_cells = sample(exp_cells, n_batches * final_seed, replace = false)
+    rep_cells = reshape(rep_cells, (final_seed, n_batches))
+
+    fin_rep_cells = Vector{Vector{InVivoCancerCell}}(undef, n_batches)
+    engraft_rows = DataFrame[]
+    for i in 1:n_batches
+        design = rep_design[i]
+        cells_i = collect(rep_cells[:, i])
+        cells_i, stats = engraftment_selection(cells_i, model.params.pEG, model.params.sEG)
+        push!(engraft_rows, DataFrame(cond = design.cond,
+                                      rep = design.rep,
+                                      passage = 1,
+                                      N_engraft = stats["N_engraft"],
+                                      nEG0_engraft = stats["nEG0_engraft"],
+                                      nEG1_engraft = stats["nEG1_engraft"]))
+        extend_with_dead_cells!(cells_i, Nbuff, make_dead_cell_invivo)
+        fin_rep_cells[i] = cells_i
+    end
+
+    engraft_df = isempty(engraft_rows) ? DataFrame(cond = String[], rep = Int[], passage = Int[], N_engraft = Int[], nEG0_engraft = Int[], nEG1_engraft = Int[]) : vcat(engraft_rows...)
+    return fin_rep_cells, engraft_df
+end
+
+function _run_abm_passage_experiment_invivo!(
+    model::ResPopInVivo_ABM,
+    cells::Vector{InVivoCancerCell};
+    t0::Float64,
+    tmax::Float64,
+    t_Pass::Union{Float64, Vector{Float64}},
+    Nseed::Int64,
+    Nmax::Int64,
+    Cc::Int64,
+    treat_ons::Vector{Float64},
+    treat_offs::Vector{Float64},
+    dt_save_at::Float64,
+    Nbuff::Int64,
+    R_real::String,
+    t_frac::Float64,
+    rep::Int64,
+    treat::Bool,
+    drug_effect::Symbol,
+    cond::String = "DT",
+    sub_sample_cells::Bool = false,
+    K::Int64 = 0
+)
+    t_pass_vec = _passage_times(t_Pass, tmax)
+    boundaries = vcat([t0], filter(x -> x < tmax, t_pass_vec), [tmax])
+
+    cell_lin_df_vec = DataFrame[]
+    samp_cell_lin_df_vec = DataFrame[]
+    Nvec = Int64[]
+    nS_vec = Int64[]
+    nR_vec = Int64[]
+    nE_vec = Int64[]
+    nS_EG0_vec = Int64[]
+    nS_EG1_vec = Int64[]
+    nR_EG0_vec = Int64[]
+    nR_EG1_vec = Int64[]
+    nE_EG0_vec = Int64[]
+    nE_EG1_vec = Int64[]
+    tvec = Float64[]
+    Pvec = Int64[]
+    engraft_rows = DataFrame[]
+
+    for seg_idx in 1:(length(boundaries) - 1)
+        seg_sim = ABMSimParams(
+            t0 = boundaries[seg_idx],
+            tmax = boundaries[seg_idx + 1],
+            Nmax = Nmax,
+            Cc = Cc,
+            treat_ons = treat_ons,
+            treat_offs = treat_offs,
+            dt_save_at = dt_save_at,
+            R_real = R_real,
+            t_frac = t_frac,
+            Passage = seg_idx,
+            drug_effect = drug_effect
+        )
+        kmc_out = run_model_core_abm(model, ResPopInVivoABMState(cells), seg_sim; treat = treat)
+
+        _record_abm_outputs!(kmc_out, cells, rep, seg_idx, cell_lin_df_vec,
+                             Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
+                             sub_sample_cells = sub_sample_cells, K = K,
+                             samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                             cond = cond)
+        _append_invivo_abm_eg_outputs!(kmc_out,
+                                       nS_EG0_vec, nS_EG1_vec,
+                                       nR_EG0_vec, nR_EG1_vec,
+                                       nE_EG0_vec, nE_EG1_vec)
+
+        if seg_idx < (length(boundaries) - 1)
+            live_cells = alive_cells(cells)
+            if length(live_cells) < Nseed
+                break
+            end
+            live_cells = sample(live_cells, Nseed, replace = false)
+            live_cells, stats = engraftment_selection(live_cells, model.params.pEG, model.params.sEG)
+            push!(engraft_rows, DataFrame(cond = cond,
+                                          rep = rep,
+                                          passage = seg_idx + 1,
+                                          N_engraft = stats["N_engraft"],
+                                          nEG0_engraft = stats["nEG0_engraft"],
+                                          nEG1_engraft = stats["nEG1_engraft"]))
+            cells = live_cells
+            extend_with_dead_cells!(cells, Nbuff, make_dead_cell_invivo)
+        end
+    end
+
+    out = Dict(
+        "cell_lin_df_vec" => cell_lin_df_vec,
+        "Nvec" => Nvec,
+        "tvec" => tvec,
+        "Pvec" => Pvec,
+        "nS_vec" => nS_vec,
+        "nR_vec" => nR_vec,
+        "nE_vec" => nE_vec,
+        "nS_EG0_vec" => nS_EG0_vec,
+        "nS_EG1_vec" => nS_EG1_vec,
+        "nR_EG0_vec" => nR_EG0_vec,
+        "nR_EG1_vec" => nR_EG1_vec,
+        "nE_EG0_vec" => nE_EG0_vec,
+        "nE_EG1_vec" => nE_EG1_vec,
+        "engraft_df" => isempty(engraft_rows) ? DataFrame(cond = String[], rep = Int[], passage = Int[], N_engraft = Int[], nEG0_engraft = Int[], nEG1_engraft = Int[]) : vcat(engraft_rows...)
+    )
+    if sub_sample_cells
+        out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
+    end
+    return out
+end
+
+function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams; kwargs...)
+    n_rep = _kw(kwargs, :n_rep, exp.n_rep)
+    R_real = _kw(kwargs, :R_real, "b")
+    t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
+    just_lin = _kw(kwargs, :just_lin, false)
+    de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
+    drug_treatment = _kw(kwargs, :drug_treatment, exp.drug_treatment)
+    inc_control = _kw(kwargs, :inc_control, exp.inc_control)
+    inc_pot = _kw(kwargs, :inc_pot, exp.inc_pot)
+    sub_sample_cells = _kw(kwargs, :sub_sample_cells, model.abm.sub_sample_cells)
+    K = _kw(kwargs, :K, model.abm.K)
+    dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
+
+    _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
+    _validate_tmax_length(exp.tmax, n_rep)
+
+    model_eff = _with_drug_effect(model, de)
+    rep_design = _experiment_condition_design(drug_treatment, inc_control, n_rep)
+    pot_outputs = inc_pot ? Dict{String, Any}() : nothing
+    rep_cells, split_engraft_df = _expand_split_cells_abm(model_eff, exp, n_rep;
+                                                          R_real = R_real,
+                                                          drug_effect = de,
+                                                          dt_save_at = dt_save_at,
+                                                          t_frac = t_frac,
+                                                          rep_design = rep_design,
+                                                          inc_pot = inc_pot,
+                                                          pot_outputs = pot_outputs)
+
+    fin_t_outs = Float64[]
+    fin_u_outs = Float64[]
+    fin_cond_outs = String[]
+    fin_rep_outs = Int64[]
+    lin_df_outs = DataFrame[]
+    sub_lin_df_outs = DataFrame[]
+    sim_dfs = DataFrame[]
+    engraft_rows = DataFrame[split_engraft_df]
+
+    if inc_pot
+        push!(lin_df_outs, pot_outputs["lin_df"])
+        if !just_lin
+            push!(sim_dfs, pot_outputs["sol_df"])
+        end
+    end
+
+    nseed_last = _nseed_last(exp.Nseed)
+    for i in eachindex(rep_design)
+        design = rep_design[i]
+        rep_tmax = _replicate_tmax(exp.tmax, n_rep, design.rep)
+
+        extend_with_dead_cells!(rep_cells[i], model.abm.Nbuff, make_dead_cell_invivo)
+        sim = _run_abm_passage_experiment_invivo!(
+            model_eff, rep_cells[i];
+            t0 = 0.0, tmax = rep_tmax, t_Pass = exp.t_Pass,
+            Nseed = nseed_last, Nmax = exp.Nmax, Cc = exp.Cc,
+            treat_ons = exp.treat_ons, treat_offs = exp.treat_offs,
+            dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
+            R_real = R_real, t_frac = t_frac, rep = design.rep,
+            treat = design.treat, drug_effect = de,
+            cond = design.cond,
+            sub_sample_cells = sub_sample_cells, K = K
+        )
+
+        push!(engraft_rows, sim["engraft_df"])
+        push!(lin_df_outs, join_dfs(sim["cell_lin_df_vec"], "bc"))
+        if sub_sample_cells
+            push!(sub_lin_df_outs, join_dfs(sim["sub_samp_cell_lin_df_vec"], "bc"))
+        end
+
+        if !just_lin
+            push!(sim_dfs, _invivo_abm_sol_df(sim; cond = design.cond, rep = design.rep))
+            if !isempty(sim["tvec"])
+                push!(fin_t_outs, last(sim["tvec"]))
+                push!(fin_u_outs, last(sim["Nvec"]))
+                push!(fin_cond_outs, design.cond)
+                push!(fin_rep_outs, design.rep)
+            end
+        end
+    end
+
+    out = Dict{String, Any}(
+        "lin_df" => join_dfs(lin_df_outs, "bc"),
+        "engraft_df" => isempty(engraft_rows) ? DataFrame(cond = String[], rep = Int[], passage = Int[], N_engraft = Int[], nEG0_engraft = Int[], nEG1_engraft = Int[]) : vcat(engraft_rows...)
+    )
+
+    if sub_sample_cells
+        out["sub_lin_df"] = join_dfs(sub_lin_df_outs, "bc")
+    end
+
+    if !just_lin
+        out["t"] = fin_t_outs
+        out["u"] = fin_u_outs
+        out["cond"] = fin_cond_outs
+        out["rep"] = fin_rep_outs
+        out["sol_df"] = isempty(sim_dfs) ? DataFrame() : vcat(sim_dfs...)
+    end
+
+    return out
+end
+
+function _run_abm_simple!(
+    model::ResPopInVivo_ABM,
+    cells::Vector{InVivoCancerCell};
+    t0::Float64,
+    tmax::Float64,
+    Nmax::Int64,
+    Cc::Int64,
+    treat_ons::Vector{Float64},
+    treat_offs::Vector{Float64},
+    dt_save_at::Float64,
+    R_real::String,
+    t_frac::Float64,
+    rep::Int64,
+    treat::Bool,
+    drug_effect::Symbol,
+    sub_sample_cells::Bool = false,
+    K::Int64 = 0
+)
+    sim = ABMSimParams(
+        t0 = t0,
+        tmax = tmax,
+        Nmax = Nmax,
+        Cc = Cc,
+        treat_ons = treat_ons,
+        treat_offs = treat_offs,
+        dt_save_at = dt_save_at,
+        R_real = R_real,
+        t_frac = t_frac,
+        Passage = 1,
+        drug_effect = drug_effect
+    )
+    kmc_out = run_model_core_abm(model, ResPopInVivoABMState(cells), sim; treat = treat)
+
+    cell_lin_df_vec = DataFrame[]
+    samp_cell_lin_df_vec = DataFrame[]
+    Nvec = Int64[]
+    nS_vec = Int64[]
+    nR_vec = Int64[]
+    nE_vec = Int64[]
+    nS_EG0_vec = Int64[]
+    nS_EG1_vec = Int64[]
+    nR_EG0_vec = Int64[]
+    nR_EG1_vec = Int64[]
+    nE_EG0_vec = Int64[]
+    nE_EG1_vec = Int64[]
+    tvec = Float64[]
+    Pvec = Int64[]
+
+    _record_abm_outputs!(kmc_out, cells, rep, 1, cell_lin_df_vec,
+                         Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
+                         sub_sample_cells = sub_sample_cells, K = K,
+                         samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+    _append_invivo_abm_eg_outputs!(kmc_out,
+                                   nS_EG0_vec, nS_EG1_vec,
+                                   nR_EG0_vec, nR_EG1_vec,
+                                   nE_EG0_vec, nE_EG1_vec)
+
+    out = Dict(
+        "cell_lin_df_vec" => cell_lin_df_vec,
+        "Nvec" => Nvec,
+        "tvec" => tvec,
+        "Pvec" => Pvec,
+        "nS_vec" => nS_vec,
+        "nR_vec" => nR_vec,
+        "nE_vec" => nE_vec,
+        "nS_EG0_vec" => nS_EG0_vec,
+        "nS_EG1_vec" => nS_EG1_vec,
+        "nR_EG0_vec" => nR_EG0_vec,
+        "nR_EG1_vec" => nR_EG1_vec,
+        "nE_EG0_vec" => nE_EG0_vec,
+        "nE_EG1_vec" => nE_EG1_vec
+    )
+    if sub_sample_cells
+        out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
+    end
+    return out
+end
+
+function _simulate_simple_abm(model::ResPopInVivo_ABM, sim::SimpleSimParams; kwargs...)
+    R_real = _kw(kwargs, :R_real, "b")
+    t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
+    de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
+    drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
+    skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
+    bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
+    Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
+    dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
+
+    model_eff = _with_drug_effect(model, de)
+    cells = seed_invivo_cells(sim.n0, model.params.rho, model.params.fEG1, model.abm.Nbuff;
+                              skew_lib = skew_lib, bc_unif = bc_unif, Nbc = Nbc)
+
+    sim_out = _run_abm_simple!(
+        model_eff, cells;
+        t0 = 0.0, tmax = sim.tmax,
+        Nmax = sim.Nmax, Cc = sim.Cc,
+        treat_ons = sim.treat_ons, treat_offs = sim.treat_offs,
+        dt_save_at = dt_save_at,
+        R_real = R_real, t_frac = t_frac, rep = 1,
+        treat = drug_treatment, drug_effect = de,
+        sub_sample_cells = false, K = 0
+    )
+
+    sol_df = DataFrame(
+        t = sim_out["tvec"],
+        nS_EG0 = sim_out["nS_EG0_vec"],
+        nS_EG1 = sim_out["nS_EG1_vec"],
+        nR_EG0 = sim_out["nR_EG0_vec"],
+        nR_EG1 = sim_out["nR_EG1_vec"],
+        nE_EG0 = sim_out["nE_EG0_vec"],
+        nE_EG1 = sim_out["nE_EG1_vec"],
+        nS = sim_out["nS_vec"],
+        nR = sim_out["nR_vec"],
+        nE = sim_out["nE_vec"],
+        n_EG0 = sim_out["nS_EG0_vec"] .+ sim_out["nR_EG0_vec"] .+ sim_out["nE_EG0_vec"],
+        n_EG1 = sim_out["nS_EG1_vec"] .+ sim_out["nR_EG1_vec"] .+ sim_out["nE_EG1_vec"],
+        N = sim_out["Nvec"]
     )
 
     return Dict(

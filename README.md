@@ -93,6 +93,36 @@ Drug exposure is modelled through a time-dependent effective concentration $D_c(
     - Damaged cells do not divide and experience elevated death rates.
     - The resistant phenotype (`R`) experiences a lower probability of drug-induced damage via `psi`.
 
+### ResPopInVivo
+`ResPopInVivo` extends the `ResPop` model family for in vivo experiments where cells have an additional fixed engraftment phenotype (`EG0` or `EG1`). It can be run using either model class:
+- Hybrid class: `ResPopInVivo(params)`
+- Agent-Based class: `ResPopInVivo_ABM(params; abm=ABMParams())`
+
+#### ResPopInVivo features:
+- Biological phenotypes remain sensitive (`S`), resistant (`R`), and escape (`E`).
+- Each cell or compartment is also stratified by engraftment phenotype:
+    - `EG1`: baseline engraftable phenotype
+    - `EG0`: reduced-engraftment phenotype
+- Engraftment probability is controlled by:
+    - `pEG`: probability that an `EG1` cell engrafts
+    - `sEG`: reduction strength for `EG0` cells
+    - `P(engraft | EG0) = pEG * (1 - sEG)`
+    - `P(engraft | EG1) = pEG`
+- Initial `EG1` fraction is controlled by `fEG1`.
+- Engraftment selection is applied during in vivo experiment bottlenecks:
+    - after the pre-replicate expansion split into replicate mice
+    - after scheduled passage bottlenecks
+- Staged pre-replicate expansion bottlenecks from vector `t_exp`/`Nseed` are treated as simple in vitro sampling bottlenecks and do not apply engraftment selection.
+- Optional untreated-control condition support is available through `ExperimentParams(inc_control=true)`.
+- Optional pre-split expanded-pool output is available through `ExperimentParams(inc_pot=true)`.
+- Hybrid and ABM `sol_df` outputs use a matched in vivo count schema, including EG-stratified phenotype counts and phenotype/EG totals.
+
+#### ResPopInVivo outputs:
+- `engraft_df`: realized engraftment counts per condition, replicate, and passage.
+- `sol_df`: time-series population counts with columns such as `nS_EG0`, `nS_EG1`, `nR_EG0`, `nR_EG1`, `nE_EG0`, `nE_EG1`, `nS`, `nR`, `nE`, `n_EG0`, `n_EG1`, and `N`.
+- With `inc_pot=true`, `sol_df` includes the pre-replicate expanded pool as `cond = "POT"`, `rep = 0`, and `passage = 0`.
+- ABM `lin_df`: barcode abundance table with condition-prefixed replicate columns (`DT...` for drug-treated, `CO...` for untreated controls). With `inc_pot=true`, the first barcode count column is `POT_P0`.
+
 
 
 
@@ -103,11 +133,12 @@ Drug exposure is modelled through a time-dependent effective concentration $D_c(
 This pathway is intended for rapid model interrogation without the full replicate/passaging experiment workflow.
 
 Features of the simple simulation layer include:
-- Shared dispatch across model families (`ResPop`, `ResDmg`, ABM variants, and EvBC ABM variants).
+- Shared dispatch across model families (`ResPop`, `ResDmg`, `ResPopInVivo`, ABM variants, and EvBC ABM variants).
 - Input via `SimpleSimParams` for one-population runs with optional treatment windows.
 - Compact outputs for trajectory and barcode summaries (`sol_df`; plus `lin_df` for ABM classes).
 - EvBC support returns lineage outputs (`lineage_df`) with ground-truth relatedness metadata.
 - No experiment-level expansion/passaging/replicate orchestration (use `simulate_experiment` for those workflows).
+- For `ResPopInVivo`, simple simulations include EG-stratified population outputs but do not apply experiment-level engraftment bottlenecks.
 
 ### Outputs
 
@@ -130,6 +161,8 @@ Features of the experimental design include:
 - Scheduled passaging by time (`t_Pass`) and/or cap-triggered passaging (`Nmax`).
 - Replicate experiments (`n_rep`) under identical fixed design settings.
 - Optional treatment windows (`treat_ons`, `treat_offs`) and compact observation outputs (`t_keep`).
+- Optional untreated controls for in vivo experiments (`inc_control=true`).
+- Optional pre-replicate expanded-pool output for in vivo experiments (`inc_pot=true`).
 - Optional assay branches (`run_IC`, `run_colony`) where enabled in simulation pipelines.
 
 ### Outputs
@@ -138,6 +171,10 @@ Features of the experimental design include:
 - `lin_df`: barcode abundance summary table across replicate/passage outputs.
 - `t`: summary vector of sampled times (returned unless `just_lin=true`).
 - `u`: summary vector of population sizes aligned to `t` (returned unless `just_lin=true`).
+- `cond`: in vivo condition labels aligned to `t`/`u` when using `ResPopInVivo` experiment workflows (`"CO"` then `"DT"` when controls are included).
+- `rep`: in vivo replicate labels aligned to `t`/`u` when using `ResPopInVivo` experiment workflows.
+- `engraft_df`: in vivo realized engraftment table for `ResPopInVivo` experiment workflows.
+- In vivo `sol_df` may include `cond = "POT"`, `rep = 0`, `passage = 0` rows when `inc_pot=true`.
 - `sub_lin_df`: optional subsampled barcode table when `sub_sample_cells=true`.
 - `lineage_df`: EvBC-only ground-truth lineage table with node-level lineage metadata.
 
@@ -268,6 +305,70 @@ result_dmg_hybrid = simulate_experiment(model_dmg_hybrid, exp)
 result_dmg_abm = simulate_experiment(model_dmg_abm, exp)
 ```
 
+### 6) Run an in vivo experiment with untreated controls
+
+```julia
+params_invivo = ResPopInVivoParams(
+    b = 0.893,
+    d = 0.200,
+    rho = 1e-01,
+    mu = 0.0,
+    sig = 0.0,
+    del = 0.0,
+    al = 0.0,
+    Dc = 1.2,
+    k = 0.5,
+    psi = 1.0,
+    drug_effect = :c,
+    fEG1 = 0.1,
+    pEG = 1.0,
+    sEG = 0.8
+)
+
+abm_params = ABMParams(
+    Nbuff = Int(1e+05),
+    t_frac = 0.01,
+    dt_save_at = 0.01
+)
+
+model_invivo_hybrid = ResPopInVivo(params_invivo)
+model_invivo_abm = ResPopInVivo_ABM(params_invivo; abm = abm_params)
+
+exp_invivo = ExperimentParams(
+    n0 = Int(1e+03),
+    t_exp = 12.0,
+    tmax = 30.0,
+    t_Pass = Float64[],
+    Nseed = Int(1e+03),
+    Nmax = Int(1e+04),
+    Cc = Int(1e+05),
+    treat_ons = Float64[1.0],
+    treat_offs = Float64[30.0],
+    t_keep = Float64[],
+    Nswitch = 200,
+    N_trans_switch = 1000.0,
+    save_at = 0.01,
+    drug_treatment = true,
+    inc_control = true,
+    full_sol = true,
+    n_rep = 4
+)
+
+invivo_hybrid = simulate_experiment(model_invivo_hybrid, exp_invivo)
+invivo_abm = simulate_experiment(model_invivo_abm, exp_invivo)
+
+# Time-series population outputs
+invivo_hybrid["sol_df"]
+invivo_abm["sol_df"]
+
+# Realized engraftment counts by condition, replicate, and passage
+invivo_hybrid["engraft_df"]
+invivo_abm["engraft_df"]
+
+# Summary vectors are condition-ordered: CO replicates first, then DT replicates
+invivo_hybrid["cond"], invivo_hybrid["rep"], invivo_hybrid["t"], invivo_hybrid["u"]
+```
+
 ## Parameter reference
 
 ### `ResPopParams`
@@ -286,6 +387,16 @@ Core parameters for the ResPop model family (hybrid and ABM).
 | `k` | `Float64` (required) | Drug concentration accumulation/decay rate ($\kappa$). | Must be valid numeric input. |
 | `psi` | `Float64` (required) | Drug attenuation factor for resistant/escape phenotypes ($\psi$). | `0 ≤ psi ≤ 1`. |
 | `drug_effect` | `Symbol` (`:d`) | Drug action mode: death-only (`:d`), birth-only (`:b`), combined (`:c`). | Must be one of `:d`, `:b`, `:c`. |
+
+### `ResPopInVivoParams`
+Core parameters for the ResPopInVivo model family (hybrid and ABM). ResPopInVivo uses the ResPop biological parameters and adds fixed engraftment phenotype parameters.
+
+| Parameter | Type (default) | Meaning | Constraints |
+|---|---|---|---|
+| `b, d, rho, mu, sig, del, al, Dc, k, psi, drug_effect` | as in `ResPopParams` | Same meanings as ResPop parameters for `S`, `R`, and `E` population dynamics. | Shared constraints from `ResPopParams` where applicable. |
+| `fEG1` | `Float64` (required) | Initial fraction of cells assigned the `EG1` engraftment phenotype. | `0 <= fEG1 <= 1`. |
+| `pEG` | `Float64` (required) | Baseline engraftment probability for `EG1` cells. | `0 <= pEG <= 1`. |
+| `sEG` | `Float64` (required) | Engraftment reduction for `EG0` cells; `P(engraft | EG0) = pEG * (1 - sEG)`. | `0 <= sEG <= 1`. |
 
 ### `ResDmgParams`
 Core parameters for the ResDmg model family (hybrid and ABM). ResDmg uses `S, DS, DR, R` states and does not include an escape (`E`) transition.
@@ -337,17 +448,23 @@ Experiment design shared by both model families.
 | `save_at` | `Float64` (`0.5`) | Hybrid solver save interval. | `> 0`. |
 | `n_rep` | `Int64` (`4`) | Number of replicate experiments. | `> 0`. |
 | `drug_treatment` | `Bool` (`true`) | Whether treatment is applied in main experiment runs. | Boolean. |
+| `inc_control` | `Bool` (`false`) | For in vivo workflows, include an additional untreated-control batch of `n_rep` replicates. If `drug_treatment=false`, only control replicates are run. | Boolean. |
+| `inc_pot` | `Bool` (`false`) | For in vivo workflows, save the pre-replicate expanded pool trajectory. ABM workflows also save pre-split barcode composition as `POT_P0`. | Boolean. |
 | `full_sol` | `Bool` (`false`) | Return full per-time simulated trajectory table. | Boolean. |
 
 ## Key API
 - `ResPopParams`: ResPop biological parameters.
 - `ResDmgParams`: ResDmg biological parameters.
+- `ResPopInVivoParams`: ResPopInVivo biological and engraftment parameters.
 - `ResPop`: hybrid ODE+jump model.
 - `ResDmg`: hybrid ODE+jump model with damaged compartment.
+- `ResPopInVivo`: hybrid in vivo model with `S/R/E x EG0/EG1` compartments and engraftment bottlenecks.
 - `ResPop_ABM`: agent-based model.
 - `ResDmg_ABM`: agent-based model with damaged compartment.
+- `ResPopInVivo_ABM`: agent-based in vivo model with fixed cell-level `EG` phenotype and engraftment bottlenecks.
 - `ABMParams`: ABM-specific configuration.
 - `ExperimentParams`: experiment-level design parameters.
+- `engraftment_selection`: shared in vivo engraftment-selection helper for cell vectors or EG count vectors.
 - `simulate_experiment(model, exp; kwargs...)`: run simulation for either model family.
 
 ## Current package structure
@@ -360,8 +477,10 @@ Experiment design shared by both model families.
 - `src/helpers/abm_helpers.jl`: ABM helper functions.
 - `src/models/res_pop.jl`: hybrid model core simulation logic.
 - `src/models/res_dmg.jl`: hybrid ResDmg model core simulation logic.
+- `src/models/res_pop_in_vivo.jl`: hybrid ResPopInVivo model core simulation logic.
 - `src/models/res_pop_abm.jl`: ABM model core simulation logic.
 - `src/models/res_dmg_abm.jl`: ABM ResDmg model core simulation logic.
+- `src/models/res_pop_in_vivo_abm.jl`: ABM ResPopInVivo model core simulation logic.
 - `src/simulation/simulate.jl`: experiment orchestration drivers and API dispatch.
 - `test/runtests.jl`: integration tests.
 
