@@ -76,11 +76,15 @@ end
 make_dead_cell() = CancerCell(0.0, false, false, false)
 
 function seed_cells(N::Int64, rho::Float64, Nbuff::Int64;
-    skew_lib::Bool = false, bc_unif::Float64 = 0.0, Nbc::Int64 = 0)
+    skew_lib::Bool = false, use_lib_probs::Bool = false, bc_unif::Float64 = 0.0,
+    Nbc::Int64 = 0, bc_probs = Float64[])
 
     cells = Vector{CancerCell}(undef, max(N, Nbuff))
 
-    if skew_lib
+    if use_lib_probs
+        bc_probs_vec = Vector{Float64}(bc_probs)
+        samp_bcs = rand(Categorical(bc_probs_vec), N)
+    elseif skew_lib
         bcs = collect(1:Nbc)
         bc_probs = generate_probabilities(bcs, bc_unif)
         samp_bcs = bcs[rand(Categorical(bc_probs), N)]

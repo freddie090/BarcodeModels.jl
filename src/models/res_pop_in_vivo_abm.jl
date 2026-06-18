@@ -87,11 +87,15 @@ function _push_invivo_abm_pheno_eg_counts!(S_EG0_vec, S_EG1_vec, R_EG0_vec, R_EG
 end
 
 function seed_invivo_cells(N::Int64, rho::Float64, fEG1::Float64, Nbuff::Int64;
-    skew_lib::Bool = false, bc_unif::Float64 = 0.0, Nbc::Int64 = 0)
+    skew_lib::Bool = false, use_lib_probs::Bool = false, bc_unif::Float64 = 0.0,
+    Nbc::Int64 = 0, bc_probs = Float64[])
 
     cells = Vector{InVivoCancerCell}(undef, max(N, Nbuff))
 
-    if skew_lib
+    if use_lib_probs
+        bc_probs_vec = Vector{Float64}(bc_probs)
+        samp_bcs = rand(Categorical(bc_probs_vec), N)
+    elseif skew_lib
         bcs = collect(1:Nbc)
         bc_probs = generate_probabilities(bcs, bc_unif)
         samp_bcs = bcs[rand(Categorical(bc_probs), N)]

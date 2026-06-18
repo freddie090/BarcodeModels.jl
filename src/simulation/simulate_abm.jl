@@ -277,14 +277,18 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
     R_real::String = "b",
     drug_effect::Symbol = model.params.drug_effect,
     skew_lib::Bool = model.abm.skew_lib,
+    use_lib_probs::Bool = model.abm.use_lib_probs,
     bc_unif::Float64 = model.abm.bc_unif,
     Nbc::Int64 = model.abm.Nbc,
+    bc_probs::Vector{Float64} = model.abm.bc_probs,
     dt_save_at::Float64 = model.abm.dt_save_at,
     t_frac::Float64 = model.abm.t_frac)
 
     Nbuff = model.abm.Nbuff
+    barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
+                       bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
     exp_cells = seed_cells(exp.n0, model.params.rho, Nbuff;
-                           skew_lib = skew_lib, bc_unif = bc_unif, Nbc = Nbc)
+                           barcode_kwargs...)
 
     expansion_model = ResPop_ABM(_copy_respop_params(model.params; al = 0.0, drug_effect = drug_effect);
                                  abm = model.abm)
@@ -375,8 +379,10 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     sub_sample_cells = _kw(kwargs, :sub_sample_cells, model.abm.sub_sample_cells)
     K = _kw(kwargs, :K, model.abm.K)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
+    use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
+    bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     run_IC = _kw(kwargs, :run_IC, exp.run_IC)
     IC_n0 = _kw(kwargs, :IC_n0, exp.IC_n0)
     IC_tmax = _kw(kwargs, :IC_tmax, exp.IC_tmax)
@@ -391,6 +397,9 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
     _validate_tmax_length(exp.tmax, n_rep)
 
+    barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
+                       bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
+
     n_pass_eff = exp.tmax isa AbstractVector ? 1 : (length(_passage_times(exp.t_Pass, Float64(exp.tmax))) + 1)
 
     model_eff = _with_drug_effect(model, de)
@@ -398,8 +407,10 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
                                         R_real = R_real,
                                         drug_effect = de,
                                         skew_lib = skew_lib,
+                                        use_lib_probs = use_lib_probs,
                                         bc_unif = bc_unif,
                                         Nbc = Nbc,
+                                        bc_probs = bc_probs,
                                         dt_save_at = dt_save_at,
                                         t_frac = t_frac)
 
@@ -410,8 +421,8 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     sim_dfs = DataFrame[]
 
     if !just_lin && run_colony
-        col_cells_tx1 = seed_cells(nCol, model.params.rho, Int64(1e6))
-        col_cells_tx0 = seed_cells(nCol, model.params.rho, Int64(1e6))
+        col_cells_tx1 = seed_cells(nCol, model.params.rho, Int64(1e6); barcode_kwargs...)
+        col_cells_tx0 = seed_cells(nCol, model.params.rho, Int64(1e6); barcode_kwargs...)
         col_sim = ABMSimParams(
             t0 = 0.0,
             tmax = tCol,
@@ -444,8 +455,8 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
         rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
 
         if !just_lin && run_IC
-            IC_cells_1 = seed_cells(IC_n0, model.params.rho, model.abm.Nbuff)
-            IC_cells_0 = seed_cells(IC_n0, model.params.rho, model.abm.Nbuff)
+            IC_cells_1 = seed_cells(IC_n0, model.params.rho, model.abm.Nbuff; barcode_kwargs...)
+            IC_cells_0 = seed_cells(IC_n0, model.params.rho, model.abm.Nbuff; barcode_kwargs...)
 
             IC_sim_tx1 = _run_abm_passage_experiment!(
                 model_eff, IC_cells_1;
@@ -767,14 +778,18 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
     R_real::String = "b",
     drug_effect::Symbol = model.params.drug_effect,
     skew_lib::Bool = model.abm.skew_lib,
+    use_lib_probs::Bool = model.abm.use_lib_probs,
     bc_unif::Float64 = model.abm.bc_unif,
     Nbc::Int64 = model.abm.Nbc,
+    bc_probs::Vector{Float64} = model.abm.bc_probs,
     dt_save_at::Float64 = model.abm.dt_save_at,
     t_frac::Float64 = model.abm.t_frac)
 
     Nbuff = model.abm.Nbuff
+    barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
+                       bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
     exp_cells = seed_resdmg_cells(exp.n0, model.params.rho, Nbuff;
-                                  skew_lib = skew_lib, bc_unif = bc_unif, Nbc = Nbc)
+                                  barcode_kwargs...)
 
     expansion_model = ResDmg_ABM(_copy_resdmg_params(model.params; drug_effect = drug_effect);
                                  abm = model.abm)
@@ -865,8 +880,10 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
     sub_sample_cells = _kw(kwargs, :sub_sample_cells, model.abm.sub_sample_cells)
     K = _kw(kwargs, :K, model.abm.K)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
+    use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
+    bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     run_IC = _kw(kwargs, :run_IC, exp.run_IC)
     IC_n0 = _kw(kwargs, :IC_n0, exp.IC_n0)
     IC_tmax = _kw(kwargs, :IC_tmax, exp.IC_tmax)
@@ -881,6 +898,9 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
     _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
     _validate_tmax_length(exp.tmax, n_rep)
 
+    barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
+                       bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
+
     n_pass_eff = exp.tmax isa AbstractVector ? 1 : (length(_passage_times(exp.t_Pass, Float64(exp.tmax))) + 1)
 
     model_eff = _with_drug_effect(model, de)
@@ -888,8 +908,10 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
                                         R_real = R_real,
                                         drug_effect = de,
                                         skew_lib = skew_lib,
+                                        use_lib_probs = use_lib_probs,
                                         bc_unif = bc_unif,
                                         Nbc = Nbc,
+                                        bc_probs = bc_probs,
                                         dt_save_at = dt_save_at,
                                         t_frac = t_frac)
 
@@ -900,8 +922,8 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
     sim_dfs = DataFrame[]
 
     if !just_lin && run_colony
-        col_cells_tx1 = seed_resdmg_cells(nCol, model.params.rho, Int64(1e6))
-        col_cells_tx0 = seed_resdmg_cells(nCol, model.params.rho, Int64(1e6))
+        col_cells_tx1 = seed_resdmg_cells(nCol, model.params.rho, Int64(1e6); barcode_kwargs...)
+        col_cells_tx0 = seed_resdmg_cells(nCol, model.params.rho, Int64(1e6); barcode_kwargs...)
         col_sim = ABMSimParams(
             t0 = 0.0,
             tmax = tCol,
@@ -934,8 +956,8 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
         rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
 
         if !just_lin && run_IC
-            IC_cells_1 = seed_resdmg_cells(IC_n0, model.params.rho, model.abm.Nbuff)
-            IC_cells_0 = seed_resdmg_cells(IC_n0, model.params.rho, model.abm.Nbuff)
+            IC_cells_1 = seed_resdmg_cells(IC_n0, model.params.rho, model.abm.Nbuff; barcode_kwargs...)
+            IC_cells_0 = seed_resdmg_cells(IC_n0, model.params.rho, model.abm.Nbuff; barcode_kwargs...)
 
             IC_sim_tx1 = _run_abm_passage_experiment!(
                 model_eff, IC_cells_1;
@@ -1180,13 +1202,17 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
     de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
     drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
+    use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
+    bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     model_eff = _with_drug_effect(model, de)
+    barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
+                       bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
     cells = seed_cells(sim.n0, model.params.rho, model.abm.Nbuff;
-                       skew_lib = skew_lib, bc_unif = bc_unif, Nbc = Nbc)
+                       barcode_kwargs...)
 
     sim_out = _run_abm_simple!(
         model_eff, cells;
@@ -1219,13 +1245,17 @@ function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...
     de = normalize_resdmg_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
     drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
+    use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
+    bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     model_eff = _with_drug_effect(model, de)
+    barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
+                       bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
     cells = seed_resdmg_cells(sim.n0, model.params.rho, model.abm.Nbuff;
-                              skew_lib = skew_lib, bc_unif = bc_unif, Nbc = Nbc)
+                              barcode_kwargs...)
 
     sim_out = _run_abm_simple!(
         model_eff, cells;
@@ -1257,8 +1287,10 @@ function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams,
     R_real::String = "b",
     drug_effect::Symbol = model.params.drug_effect,
     skew_lib::Bool = model.abm.skew_lib,
+    use_lib_probs::Bool = model.abm.use_lib_probs,
     bc_unif::Float64 = model.abm.bc_unif,
     Nbc::Int64 = model.abm.Nbc,
+    bc_probs::Vector{Float64} = model.abm.bc_probs,
     dt_save_at::Float64 = model.abm.dt_save_at,
     t_frac::Float64 = model.abm.t_frac,
     rep_design = _experiment_condition_design(true, false, n_rep),
@@ -1266,8 +1298,10 @@ function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams,
     pot_outputs = nothing)
 
     Nbuff = model.abm.Nbuff
+    barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
+                       bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
     exp_cells = seed_invivo_cells(exp.n0, model.params.rho, model.params.fEG1, Nbuff;
-                                  skew_lib = skew_lib, bc_unif = bc_unif, Nbc = Nbc)
+                                  barcode_kwargs...)
 
     expansion_model = ResPopInVivo_ABM(_copy_respop_invivo_params(model.params; al = 0.0, drug_effect = drug_effect);
                                        abm = model.abm)
@@ -1525,6 +1559,11 @@ function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams
     inc_pot = _kw(kwargs, :inc_pot, exp.inc_pot)
     sub_sample_cells = _kw(kwargs, :sub_sample_cells, model.abm.sub_sample_cells)
     K = _kw(kwargs, :K, model.abm.K)
+    skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
+    use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
+    bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
+    Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
+    bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
@@ -1536,6 +1575,11 @@ function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams
     rep_cells, split_engraft_df = _expand_split_cells_abm(model_eff, exp, n_rep;
                                                           R_real = R_real,
                                                           drug_effect = de,
+                                                          skew_lib = skew_lib,
+                                                          use_lib_probs = use_lib_probs,
+                                                          bc_unif = bc_unif,
+                                                          Nbc = Nbc,
+                                                          bc_probs = bc_probs,
                                                           dt_save_at = dt_save_at,
                                                           t_frac = t_frac,
                                                           rep_design = rep_design,
@@ -1697,13 +1741,17 @@ function _simulate_simple_abm(model::ResPopInVivo_ABM, sim::SimpleSimParams; kwa
     de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
     drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
+    use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
+    bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     model_eff = _with_drug_effect(model, de)
+    barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
+                       bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
     cells = seed_invivo_cells(sim.n0, model.params.rho, model.params.fEG1, model.abm.Nbuff;
-                              skew_lib = skew_lib, bc_unif = bc_unif, Nbc = Nbc)
+                              barcode_kwargs...)
 
     sim_out = _run_abm_simple!(
         model_eff, cells;
