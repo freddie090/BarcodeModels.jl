@@ -203,7 +203,7 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
 
         exp_cells = seed_cells(exp.n0, 0.0, Nbuff;
                                barcode_kwargs...)
-        _assign_resistance_by_barcode!(exp_cells, model.params.rho, exp.n0)
+        _assign_resistance_by_barcode!(exp_cells, model.params.rho)
 
         rep_cells = sample(alive_cells(exp_cells), n_rep * final_seed, replace = false)
         rep_cells = reshape(rep_cells, (final_seed, n_rep))
@@ -705,7 +705,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
 
         exp_cells = seed_resdmg_cells(exp.n0, 0.0, Nbuff;
                                       barcode_kwargs...)
-        _assign_resistance_by_barcode!(exp_cells, model.params.rho, exp.n0)
+        _assign_resistance_by_barcode!(exp_cells, model.params.rho)
 
         rep_cells = sample(alive_cells(exp_cells), n_rep * final_seed, replace = false)
         rep_cells = reshape(rep_cells, (final_seed, n_rep))
@@ -1241,8 +1241,8 @@ function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams,
 
         exp_cells = seed_invivo_cells(exp.n0, 0.0, 0.0, Nbuff;
                                       barcode_kwargs...)
-        _assign_resistance_by_barcode!(exp_cells, model.params.rho, exp.n0)
-        _assign_engraftment_by_barcode!(exp_cells, model.params.fEG1, exp.n0)
+        _assign_resistance_by_barcode!(exp_cells, model.params.rho)
+        _assign_engraftment_by_barcode!(exp_cells, model.params.fEG1)
 
         if inc_pot && pot_outputs !== nothing
             pot_sim = Dict(

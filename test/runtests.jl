@@ -340,7 +340,7 @@ end
             push!(cells, BarcodeModels.CancerCell(1.0, false, false, true))
         end
         push!(cells, BarcodeModels.CancerCell(2.0, false, false, true))
-        BarcodeModels._assign_resistance_by_barcode!(cells, 0.5, 2)
+        BarcodeModels._assign_resistance_by_barcode!(cells, 0.5)
         resistant_barcodes = unique([cell.barcode for cell in cells if cell.R])
         @test length(resistant_barcodes) == 1
         if resistant_barcodes[1] == 2.0
@@ -360,8 +360,12 @@ end
     for _ in 1:4
         push!(invivo_cells, BarcodeModels.InVivoCancerCell(3.0, false, false, false, true))
     end
-    BarcodeModels._assign_resistance_by_barcode!(invivo_cells, 0.34, 3)
-    BarcodeModels._assign_engraftment_by_barcode!(invivo_cells, 0.67, 3)
+    BarcodeModels._assign_resistance_by_barcode!(invivo_cells, 0.34)
+    BarcodeModels._assign_engraftment_by_barcode!(invivo_cells, 0.67)
+    resistant_bcs = unique([c.barcode for c in invivo_cells if c.R])
+    eg1_bcs = unique([c.barcode for c in invivo_cells if c.EG])
+    @test length(resistant_bcs) == 1
+    @test length(eg1_bcs) == 2
     for bc in unique([c.barcode for c in invivo_cells])
         bc_cells = [c for c in invivo_cells if c.barcode == bc]
         @test length(unique([c.R for c in bc_cells])) == 1

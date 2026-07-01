@@ -94,9 +94,9 @@ function _sample_uniform_barcodes(bcs, n_target::Int64)
 end
 
 """Assign resistant status to live cells by sampled barcode identity."""
-function _assign_resistance_by_barcode!(cells, rho::Float64, n0::Int64)
+function _assign_resistance_by_barcode!(cells, rho::Float64)
     bcs = _unique_live_barcodes(cells)
-    n_target = Int64(round(rho * n0))
+    n_target = Int64(round(rho * length(bcs)))
     selected_bcs = Set(_sample_uniform_barcodes(bcs, n_target))
     for cell in cells
         cell.alive || continue
@@ -106,9 +106,9 @@ function _assign_resistance_by_barcode!(cells, rho::Float64, n0::Int64)
 end
 
 """Assign in vivo engraftment labels to live cells by sampled barcode identity."""
-function _assign_engraftment_by_barcode!(cells, fEG1::Float64, n0::Int64)
+function _assign_engraftment_by_barcode!(cells, fEG1::Float64)
     bcs = _unique_live_barcodes(cells)
-    n_target = Int64(round(fEG1 * n0))
+    n_target = Int64(round(fEG1 * length(bcs)))
     selected_bcs = Set(_sample_uniform_barcodes(bcs, n_target))
     for cell in cells
         cell.alive || continue
