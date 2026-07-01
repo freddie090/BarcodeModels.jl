@@ -23,17 +23,19 @@ For a new standard ABM model family:
 
 1. Add or reuse parameter logic in `src/types/Parameters.jl`.
 2. Define the model, cell type, count/output state, seeding, event functions, and `run_model_core_abm` in `src/models/`.
-3. Reuse helpers from `src/helpers/abm_helpers.jl` where possible.
-4. Add include and export entries in `src/BarcodeModels.jl`.
-5. Add `simulate_experiment_abm` and `simulate_simple_abm` dispatch entries in `src/simulation/simulate.jl`.
-6. Extend `src/simulation/simulate_abm.jl` if the new model needs custom experiment orchestration or output recording.
-7. Add tests that cover seeding, event logic, simple simulation, and experiment simulation.
+3. Reuse helpers from `src/helpers/abm_helpers.jl` where possible for layer-neutral ABM mechanics such as barcode sampling, live/dead buffers, and count tables.
+4. If biological event functions are reused by multiple implementations of the same biological model family, put them in `src/models/shared/` rather than `src/helpers/abm_helpers.jl`.
+5. Add include and export entries in `src/BarcodeModels.jl`.
+6. Add `simulate_experiment_abm` and `simulate_simple_abm` dispatch entries in `src/simulation/simulate.jl`.
+7. Extend `src/simulation/simulate_abm.jl` if the new model needs custom experiment orchestration; put reusable output assembly in `src/simulation/abm_outputs.jl`.
+8. Add tests that cover seeding, event logic, simple simulation, and experiment simulation.
 
 For a new EvBC ABM model family:
 
 1. Start from the matching standard ABM model if one exists.
 2. Add lineage-aware cell fields and state.
 3. Maintain `LineageRecord` creation during birth and phenotype-change events.
-4. Extend `src/simulation/simulate_abm_evbc.jl` for lineage output assembly.
-5. Check compatibility with `src/helpers/lineage_utils.jl`.
-6. Add tests for `lineage_df`, extant-cell flags, parent-child relationships, and public lineage utilities.
+4. Reuse generic lineage DataFrame and root lineage initialization helpers from `src/helpers/lineage_utils.jl`.
+5. Extend `src/simulation/simulate_abm_evbc.jl` for lineage-aware orchestration.
+6. Check compatibility with `src/helpers/lineage_utils.jl`.
+7. Add tests for `lineage_df`, extant-cell flags, parent-child relationships, and public lineage utilities.

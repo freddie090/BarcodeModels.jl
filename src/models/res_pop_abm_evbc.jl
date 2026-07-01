@@ -32,34 +32,17 @@ end
 
 make_dead_cell_evbc() = CancerCellEvBC(0.0, false, false, false, 0, 0, -1.0)
 
+"""Return the ResPop phenotype label for a lineage-aware cell."""
 _respop_pheno_label(cell::CancerCellEvBC) = cell.E ? "E" : (cell.R ? "R" : "S")
 
-function _init_lineage_state!(cells::Vector{CancerCellEvBC}, t0::Float64 = 0.0)
-    lineage_records = LineageRecord[]
-    next_cell_id = Int64(1)
-    for i in eachindex(cells)
-        if cells[i].alive
-            cells[i].id = next_cell_id
-            cells[i].parent_id = 0
-            cells[i].birth_time = t0
-            push!(lineage_records, LineageRecord(next_cell_id, 0, t0, "ROOT", _respop_pheno_label(cells[i]), cells[i].barcode))
-            next_cell_id += 1
-        else
-            cells[i].id = 0
-            cells[i].parent_id = 0
-            cells[i].birth_time = -1.0
-        end
-    end
-    return next_cell_id, lineage_records
-end
-
+"""Convert standard ResPop ABM cells into lineage-aware EvBC cells."""
 function _to_evbc_cells(cells::Vector{CancerCell}; t0::Float64 = 0.0)
     evbc_cells = Vector{CancerCellEvBC}(undef, length(cells))
     for i in eachindex(cells)
         c = cells[i]
         evbc_cells[i] = CancerCellEvBC(c.barcode, c.R, c.E, c.alive, 0, 0, c.alive ? t0 : -1.0)
     end
-    next_cell_id, lineage_records = _init_lineage_state!(evbc_cells, t0)
+    next_cell_id, lineage_records = initialize_lineage_state!(evbc_cells, _respop_pheno_label, t0)
     return evbc_cells, next_cell_id, lineage_records
 end
 

@@ -157,6 +157,7 @@ The public `lineage_df` should include:
 - `alive_at_end`
 
 Generic operations on lineage tables belong in `src/helpers/lineage_utils.jl`, not inside one biological model.
+Generic lineage table assembly and root lineage-state initialization also belong in `src/helpers/lineage_utils.jl`; model files should provide only the phenotype-label adapter and lineage-aware biological events.
 
 ## Parameter Object Interface
 
@@ -260,8 +261,11 @@ Use:
 - `src/helpers/ode_helpers.jl` for reusable hybrid/ODE drug-effect and rate utilities.
 - `src/helpers/abm_helpers.jl` for reusable ABM cell-buffer, barcode, concentration, count, and tracking utilities.
 - `src/helpers/lineage_utils.jl` for generic lineage table, tree, and Newick utilities.
+- `src/models/shared/` for biological ABM event helpers that are specific to one biological model family but reused by several implementations, such as standard ABM and EvBC variants.
+- `src/simulation/abm_outputs.jl` for reusable ABM output table and vector assembly helpers.
 
 Helpers should not silently encode a new biological hypothesis. If a helper only applies to one biological model, keep it in that model file until it is genuinely shared.
+If a helper is shared only within one biological model family and encodes phenotype transitions, place it under `src/models/shared/` rather than `src/helpers/`.
 
 ## Where New Functionality Belongs
 

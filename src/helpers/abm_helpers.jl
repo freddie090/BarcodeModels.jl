@@ -66,6 +66,57 @@ function generate_probabilities(X::Vector, prob_unif::Float64)
     return rand(Dirichlet(prob_unif_vector))
 end
 
+"""Sample initial barcode identities for a seeded ABM population."""
+function sample_initial_barcodes(N::Int64;
+    skew_lib::Bool = false, use_lib_probs::Bool = false, bc_unif::Float64 = 0.0,
+    Nbc::Int64 = 0, bc_probs = Float64[])
+
+    if use_lib_probs
+        bc_probs_vec = Vector{Float64}(bc_probs)
+        return rand(Categorical(bc_probs_vec), N)
+    elseif skew_lib
+        bcs = collect(1:Nbc)
+        barcode_probs = generate_probabilities(bcs, bc_unif)
+        return bcs[rand(Categorical(barcode_probs), N)]
+    else
+        return collect(1:N)
+    end
+end
+
+"""Return unique barcodes carried by live cells."""
+_unique_live_barcodes(cells) = unique([cell.barcode for cell in cells if cell.alive])
+
+"""Sample up to n_target barcodes uniformly without replacement."""
+function _sample_uniform_barcodes(bcs, n_target::Int64)
+    n_target_clamped = clamp(n_target, 0, length(bcs))
+    n_target_clamped == 0 && return eltype(bcs)[]
+    return sample(bcs, n_target_clamped, replace = false)
+end
+
+"""Assign resistant status to live cells by sampled barcode identity."""
+function _assign_resistance_by_barcode!(cells, rho::Float64, n0::Int64)
+    bcs = _unique_live_barcodes(cells)
+    n_target = Int64(round(rho * n0))
+    selected_bcs = Set(_sample_uniform_barcodes(bcs, n_target))
+    for cell in cells
+        cell.alive || continue
+        cell.R = cell.barcode in selected_bcs
+    end
+    return nothing
+end
+
+"""Assign in vivo engraftment labels to live cells by sampled barcode identity."""
+function _assign_engraftment_by_barcode!(cells, fEG1::Float64, n0::Int64)
+    bcs = _unique_live_barcodes(cells)
+    n_target = Int64(round(fEG1 * n0))
+    selected_bcs = Set(_sample_uniform_barcodes(bcs, n_target))
+    for cell in cells
+        cell.alive || continue
+        cell.EG = cell.barcode in selected_bcs
+    end
+    return nothing
+end
+
 function find_first_dead_index(cell_arr)::Int
     for i in 1:length(cell_arr)
         if !cell_arr[i].alive
@@ -109,61 +160,6 @@ function extend_with_dead_cells!(cells, Nbuff::Int64, make_dead_cell::Function)
     initial_length = length(cells)
     if Nbuff > initial_length
         append!(cells, [make_dead_cell() for _ in 1:(Nbuff - initial_length)])
-    end
-end
-
-function birth_mutate_event!(cell_arr,
-    cell_pos::Int64, birth_pos::Int64,
-    mu::Float64, sig::Float64, al::Float64,
-    phen_counts)
-
-    if cell_pos <= 0 || cell_pos > length(cell_arr) || birth_pos <= 0 || birth_pos > length(cell_arr)
-        throw(ArgumentError("Invalid cell position or birth position"))
-    end
-
-    cell_arr[birth_pos].barcode = cell_arr[cell_pos].barcode
-    cell_arr[birth_pos].R = cell_arr[cell_pos].R
-    cell_arr[birth_pos].E = cell_arr[cell_pos].E
-    cell_arr[birth_pos].alive = true
-
-    mut_p = rand()
-
-    if cell_arr[birth_pos].E
-        phen_counts.Ecount += 1
-    elseif cell_arr[birth_pos].R
-        if mut_p < sig
-            cell_arr[birth_pos].R = false
-            phen_counts.Scount += 1
-        elseif sig <= mut_p < (sig + al)
-            cell_arr[birth_pos].R = false
-            cell_arr[birth_pos].E = true
-            phen_counts.Ecount += 1
-        else
-            phen_counts.Rcount += 1
-        end
-    else
-        if mu > mut_p
-            cell_arr[birth_pos].R = true
-            phen_counts.Rcount += 1
-        else
-            phen_counts.Scount += 1
-        end
-    end
-end
-
-function death_event!(cell_arr, cell_pos::Int64, phen_counts)
-    if cell_pos <= 0 || cell_pos > length(cell_arr)
-        throw(ArgumentError("Invalid cell position"))
-    end
-
-    cell_arr[cell_pos].alive = false
-
-    if cell_arr[cell_pos].E
-        phen_counts.Ecount -= 1
-    elseif cell_arr[cell_pos].R
-        phen_counts.Rcount -= 1
-    else
-        phen_counts.Scount -= 1
     end
 end
 

@@ -1,36 +1,3 @@
-function _lineage_df(records::Vector{LineageRecord}, rep::Int64, alive_ids::Vector{Int64} = Int64[])
-    if isempty(records)
-        return DataFrame(
-            id = Int64[],
-            parent_id = Int64[],
-            birth_time = Float64[],
-            parent_pheno = String[],
-            child_pheno = String[],
-            barcode = Float64[],
-            alive_at_end = Bool[],
-            rep = Int64[]
-        )
-    end
-    ids = [r.id for r in records]
-    parent_ids = [r.parent_id for r in records]
-    birth_times = [r.birth_time for r in records]
-    parent_phenos = [r.parent_pheno for r in records]
-    child_phenos = [r.child_pheno for r in records]
-    barcodes = [r.barcode for r in records]
-    alive_id_set = Set(alive_ids)
-    alive_at_end = [id in alive_id_set for id in ids]
-    return DataFrame(
-        id = ids,
-        parent_id = parent_ids,
-        birth_time = birth_times,
-        parent_pheno = parent_phenos,
-        child_pheno = child_phenos,
-        barcode = barcodes,
-        alive_at_end = alive_at_end,
-        rep = fill(rep, length(records))
-    )
-end
-
 function _run_abm_passage_experiment!(
     model::ResPop_ABM_EvBC,
     cells::Vector{CancerCellEvBC};

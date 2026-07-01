@@ -92,16 +92,12 @@ function seed_invivo_cells(N::Int64, rho::Float64, fEG1::Float64, Nbuff::Int64;
 
     cells = Vector{InVivoCancerCell}(undef, max(N, Nbuff))
 
-    if use_lib_probs
-        bc_probs_vec = Vector{Float64}(bc_probs)
-        samp_bcs = rand(Categorical(bc_probs_vec), N)
-    elseif skew_lib
-        bcs = collect(1:Nbc)
-        bc_probs = generate_probabilities(bcs, bc_unif)
-        samp_bcs = bcs[rand(Categorical(bc_probs), N)]
-    else
-        samp_bcs = collect(1:N)
-    end
+    samp_bcs = sample_initial_barcodes(N;
+                                       skew_lib = skew_lib,
+                                       use_lib_probs = use_lib_probs,
+                                       bc_unif = bc_unif,
+                                       Nbc = Nbc,
+                                       bc_probs = bc_probs)
 
     nEG1 = Int64(round(N * fEG1))
     nEG1 = clamp(nEG1, 0, N)

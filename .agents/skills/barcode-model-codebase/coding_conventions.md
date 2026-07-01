@@ -14,10 +14,12 @@ The framework overview is the architectural source of truth. These conventions e
 Common placements:
 
 - Biological parameters, rates, transitions, and validation: `src/types/Parameters.jl` and `src/models/`.
+- Biological ABM event helpers shared within one model family: `src/models/shared/`.
 - Hybrid state containers and `ComponentArray` conversion: `src/types/State.jl`.
 - Model class hierarchy: `src/models/abstract.jl`.
 - Public API dispatch: `src/simulation/simulate.jl`.
 - Experiment and simple-simulation workflows: `src/simulation/simulate_hybrid.jl`, `src/simulation/simulate_abm.jl`, and `src/simulation/simulate_abm_evbc.jl`.
+- Reusable ABM output table assembly: `src/simulation/abm_outputs.jl`.
 - Reusable mechanics: `src/helpers/`.
 
 ## Naming
@@ -87,13 +89,15 @@ ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ResPopParams(
   - `alive_cells`
 - Increase or validate `Nbuff` rather than silently writing past available dead slots.
 - Put generic ABM mechanics in `src/helpers/abm_helpers.jl` when shared across models.
-- Keep model-specific ABM events in the model implementation file.
+- Keep model-specific ABM events in the model implementation file, or in `src/models/shared/` when the same biological events are reused by standard, EvBC, or in vivo variants of one biological model family.
+- Keep ABM output DataFrame/vector assembly in `src/simulation/abm_outputs.jl` when it is reused across ABM workflows.
 - Use `!` for event functions and functions that mutate cells, state, counts, or output vectors.
 
 ## EvBC And Lineage Conventions
 
 - EvBC model variants should preserve standard ABM outputs and add lineage outputs.
 - Use `LineageRecord` for lineage records where possible.
+- Use `initialize_lineage_state!` from `src/helpers/lineage_utils.jl` for common root lineage setup, with a model-specific phenotype-label function supplied by the EvBC model file.
 - `lineage_df` should preserve the expected public columns:
   - `id`
   - `parent_id`

@@ -24,6 +24,19 @@ function _replicate_tmax(tmax, n_rep::Int64, i::Int64)
     return tmax isa AbstractVector ? Float64(tmax[i]) : Float64(tmax)
 end
 
+"""Normalize a passage schedule into sorted positive passage times."""
+function _passage_times(t_Pass::Union{Float64, Vector{Float64}}, tmax::Float64)
+    if t_Pass isa AbstractVector
+        times = sort(unique(Float64.(t_Pass)))
+        any(t -> t <= 0.0, times) && error("All t_Pass values must be > 0.0. Use Float64[] for no passage events.")
+        return times
+    else
+        t_val = Float64(t_Pass)
+        t_val > 0.0 || error("t_Pass must be > 0.0. Use Float64[] for no passage events.")
+        return [t_val]
+    end
+end
+
 function _experiment_condition_design(drug_treatment::Bool, inc_control::Bool, n_rep::Int64)
     design = Vector{NamedTuple{(:cond, :treat, :rep), Tuple{String, Bool, Int64}}}()
     if inc_control || !drug_treatment
