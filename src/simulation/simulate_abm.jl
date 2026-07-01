@@ -90,6 +90,58 @@ function _passage_times(t_Pass::Union{Float64, Vector{Float64}}, tmax::Float64)
     end
 end
 
+_unique_live_barcodes(cells) = unique([cell.barcode for cell in cells if cell.alive])
+
+function _sample_uniform_barcodes(bcs::Vector{Float64}, n_target::Int64)
+    n_target_clamped = clamp(n_target, 0, length(bcs))
+    n_target_clamped == 0 && return Float64[]
+    return sample(bcs, n_target_clamped, replace = false)
+end
+
+function _assign_resistance_by_barcode!(cells::Vector{CancerCell}, rho::Float64, n0::Int64)
+    bcs = _unique_live_barcodes(cells)
+    n_target = Int64(round(rho * n0))
+    selected_bcs = Set(_sample_uniform_barcodes(bcs, n_target))
+    for cell in cells
+        cell.alive || continue
+        cell.R = cell.barcode in selected_bcs
+    end
+    return nothing
+end
+
+function _assign_resistance_by_barcode!(cells::Vector{ResDmgCell}, rho::Float64, n0::Int64)
+    bcs = _unique_live_barcodes(cells)
+    n_target = Int64(round(rho * n0))
+    selected_bcs = Set(_sample_uniform_barcodes(bcs, n_target))
+    for cell in cells
+        cell.alive || continue
+        cell.R = cell.barcode in selected_bcs
+    end
+    return nothing
+end
+
+function _assign_resistance_by_barcode!(cells::Vector{InVivoCancerCell}, rho::Float64, n0::Int64)
+    bcs = _unique_live_barcodes(cells)
+    n_target = Int64(round(rho * n0))
+    selected_bcs = Set(_sample_uniform_barcodes(bcs, n_target))
+    for cell in cells
+        cell.alive || continue
+        cell.R = cell.barcode in selected_bcs
+    end
+    return nothing
+end
+
+function _assign_engraftment_by_barcode!(cells::Vector{InVivoCancerCell}, fEG1::Float64, n0::Int64)
+    bcs = _unique_live_barcodes(cells)
+    n_target = Int64(round(fEG1 * n0))
+    selected_bcs = Set(_sample_uniform_barcodes(bcs, n_target))
+    for cell in cells
+        cell.alive || continue
+        cell.EG = cell.barcode in selected_bcs
+    end
+    return nothing
+end
+
 function _run_abm_passage_experiment!(
     model::ResPop_ABM,
     cells::Vector{CancerCell};
@@ -278,6 +330,7 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
     drug_effect::Symbol = model.params.drug_effect,
     skew_lib::Bool = model.abm.skew_lib,
     use_lib_probs::Bool = model.abm.use_lib_probs,
+    split_after_barcoding::Bool = model.abm.split_after_barcoding,
     bc_unif::Float64 = model.abm.bc_unif,
     Nbc::Int64 = model.abm.Nbc,
     bc_probs::Vector{Float64} = model.abm.bc_probs,
@@ -287,6 +340,26 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
     Nbuff = model.abm.Nbuff
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
                        bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
+
+    if split_after_barcoding
+        final_seed = _nseed_last(exp.Nseed)
+        n_rep * final_seed <= exp.n0 || error("split_after_barcoding requires n0 >= n_rep*Nseed (n0=$(exp.n0), n_rep=$(n_rep), Nseed=$(final_seed)).")
+
+        exp_cells = seed_cells(exp.n0, 0.0, Nbuff;
+                               barcode_kwargs...)
+        _assign_resistance_by_barcode!(exp_cells, model.params.rho, exp.n0)
+
+        rep_cells = sample(alive_cells(exp_cells), n_rep * final_seed, replace = false)
+        rep_cells = reshape(rep_cells, (final_seed, n_rep))
+
+        fin_rep_cells = Vector{Vector{CancerCell}}(undef, n_rep)
+        for i in 1:n_rep
+            fin_rep_cells[i] = collect(rep_cells[:, i])
+            extend_with_dead_cells!(fin_rep_cells[i], Nbuff, make_dead_cell)
+        end
+        return fin_rep_cells
+    end
+
     exp_cells = seed_cells(exp.n0, model.params.rho, Nbuff;
                            barcode_kwargs...)
 
@@ -380,6 +453,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     K = _kw(kwargs, :K, model.abm.K)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
     use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
+    split_after_barcoding = _kw(kwargs, :split_after_barcoding, model.abm.split_after_barcoding)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
     bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
@@ -408,6 +482,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
                                         drug_effect = de,
                                         skew_lib = skew_lib,
                                         use_lib_probs = use_lib_probs,
+                                        split_after_barcoding = split_after_barcoding,
                                         bc_unif = bc_unif,
                                         Nbc = Nbc,
                                         bc_probs = bc_probs,
@@ -779,6 +854,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
     drug_effect::Symbol = model.params.drug_effect,
     skew_lib::Bool = model.abm.skew_lib,
     use_lib_probs::Bool = model.abm.use_lib_probs,
+    split_after_barcoding::Bool = model.abm.split_after_barcoding,
     bc_unif::Float64 = model.abm.bc_unif,
     Nbc::Int64 = model.abm.Nbc,
     bc_probs::Vector{Float64} = model.abm.bc_probs,
@@ -788,6 +864,26 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
     Nbuff = model.abm.Nbuff
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
                        bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
+
+    if split_after_barcoding
+        final_seed = _nseed_last(exp.Nseed)
+        n_rep * final_seed <= exp.n0 || error("split_after_barcoding requires n0 >= n_rep*Nseed (n0=$(exp.n0), n_rep=$(n_rep), Nseed=$(final_seed)).")
+
+        exp_cells = seed_resdmg_cells(exp.n0, 0.0, Nbuff;
+                                      barcode_kwargs...)
+        _assign_resistance_by_barcode!(exp_cells, model.params.rho, exp.n0)
+
+        rep_cells = sample(alive_cells(exp_cells), n_rep * final_seed, replace = false)
+        rep_cells = reshape(rep_cells, (final_seed, n_rep))
+
+        fin_rep_cells = Vector{Vector{ResDmgCell}}(undef, n_rep)
+        for i in 1:n_rep
+            fin_rep_cells[i] = collect(rep_cells[:, i])
+            extend_with_dead_cells!(fin_rep_cells[i], Nbuff, make_dead_resdmg_cell)
+        end
+        return fin_rep_cells
+    end
+
     exp_cells = seed_resdmg_cells(exp.n0, model.params.rho, Nbuff;
                                   barcode_kwargs...)
 
@@ -881,6 +977,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
     K = _kw(kwargs, :K, model.abm.K)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
     use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
+    split_after_barcoding = _kw(kwargs, :split_after_barcoding, model.abm.split_after_barcoding)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
     bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
@@ -909,6 +1006,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
                                         drug_effect = de,
                                         skew_lib = skew_lib,
                                         use_lib_probs = use_lib_probs,
+                                        split_after_barcoding = split_after_barcoding,
                                         bc_unif = bc_unif,
                                         Nbc = Nbc,
                                         bc_probs = bc_probs,
@@ -1288,6 +1386,7 @@ function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams,
     drug_effect::Symbol = model.params.drug_effect,
     skew_lib::Bool = model.abm.skew_lib,
     use_lib_probs::Bool = model.abm.use_lib_probs,
+    split_after_barcoding::Bool = model.abm.split_after_barcoding,
     bc_unif::Float64 = model.abm.bc_unif,
     Nbc::Int64 = model.abm.Nbc,
     bc_probs::Vector{Float64} = model.abm.bc_probs,
@@ -1300,6 +1399,59 @@ function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams,
     Nbuff = model.abm.Nbuff
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
                        bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
+
+    if split_after_barcoding
+        final_seed = _nseed_last(exp.Nseed)
+        n_batches = length(rep_design)
+        n_batches * final_seed <= exp.n0 || error("split_after_barcoding requires n0 >= n_batches*Nseed (n0=$(exp.n0), n_batches=$(n_batches), Nseed=$(final_seed)).")
+
+        exp_cells = seed_invivo_cells(exp.n0, 0.0, 0.0, Nbuff;
+                                      barcode_kwargs...)
+        _assign_resistance_by_barcode!(exp_cells, model.params.rho, exp.n0)
+        _assign_engraftment_by_barcode!(exp_cells, model.params.fEG1, exp.n0)
+
+        if inc_pot && pot_outputs !== nothing
+            pot_sim = Dict(
+                "Nvec" => Int64[length(alive_cells(exp_cells))],
+                "tvec" => Float64[0.0],
+                "Pvec" => Int64[0],
+                "nS_vec" => Int64[sum(cell -> cell.alive && !cell.R && !cell.E, exp_cells)],
+                "nR_vec" => Int64[sum(cell -> cell.alive && cell.R && !cell.E, exp_cells)],
+                "nE_vec" => Int64[sum(cell -> cell.alive && cell.E, exp_cells)],
+                "nS_EG0_vec" => Int64[sum(cell -> cell.alive && !cell.R && !cell.E && !cell.EG, exp_cells)],
+                "nS_EG1_vec" => Int64[sum(cell -> cell.alive && !cell.R && !cell.E && cell.EG, exp_cells)],
+                "nR_EG0_vec" => Int64[sum(cell -> cell.alive && cell.R && !cell.E && !cell.EG, exp_cells)],
+                "nR_EG1_vec" => Int64[sum(cell -> cell.alive && cell.R && !cell.E && cell.EG, exp_cells)],
+                "nE_EG0_vec" => Int64[sum(cell -> cell.alive && cell.E && !cell.EG, exp_cells)],
+                "nE_EG1_vec" => Int64[sum(cell -> cell.alive && cell.E && cell.EG, exp_cells)]
+            )
+            pot_outputs["sol_df"] = _invivo_abm_sol_df(pot_sim; cond = "POT", rep = 0)
+            pot_outputs["lin_df"] = get_counts(alive_cells(exp_cells), "POT_P0")
+        end
+
+        rep_cells = sample(alive_cells(exp_cells), n_batches * final_seed, replace = false)
+        rep_cells = reshape(rep_cells, (final_seed, n_batches))
+
+        fin_rep_cells = Vector{Vector{InVivoCancerCell}}(undef, n_batches)
+        engraft_rows = DataFrame[]
+        for i in 1:n_batches
+            design = rep_design[i]
+            cells_i = collect(rep_cells[:, i])
+            cells_i, stats = engraftment_selection(cells_i, model.params.pEG, model.params.sEG)
+            push!(engraft_rows, DataFrame(cond = design.cond,
+                                          rep = design.rep,
+                                          passage = 1,
+                                          N_engraft = stats["N_engraft"],
+                                          nEG0_engraft = stats["nEG0_engraft"],
+                                          nEG1_engraft = stats["nEG1_engraft"]))
+            extend_with_dead_cells!(cells_i, Nbuff, make_dead_cell_invivo)
+            fin_rep_cells[i] = cells_i
+        end
+
+        engraft_df = isempty(engraft_rows) ? DataFrame(cond = String[], rep = Int[], passage = Int[], N_engraft = Int[], nEG0_engraft = Int[], nEG1_engraft = Int[]) : vcat(engraft_rows...)
+        return fin_rep_cells, engraft_df
+    end
+
     exp_cells = seed_invivo_cells(exp.n0, model.params.rho, model.params.fEG1, Nbuff;
                                   barcode_kwargs...)
 
@@ -1561,6 +1713,7 @@ function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams
     K = _kw(kwargs, :K, model.abm.K)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
     use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
+    split_after_barcoding = _kw(kwargs, :split_after_barcoding, model.abm.split_after_barcoding)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
     bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
@@ -1577,6 +1730,7 @@ function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams
                                                           drug_effect = de,
                                                           skew_lib = skew_lib,
                                                           use_lib_probs = use_lib_probs,
+                                                          split_after_barcoding = split_after_barcoding,
                                                           bc_unif = bc_unif,
                                                           Nbc = Nbc,
                                                           bc_probs = bc_probs,

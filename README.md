@@ -419,6 +419,8 @@ Parameters specific to the agent-based model implementation.
 
 Barcode initialization supports three modes: default sequential IDs, generated skewed libraries (`skew_lib=true`), or caller-supplied library probabilities (`use_lib_probs=true`). The two library modes are mutually exclusive, and `bc_probs` must be a valid probability vector with length `Nbc`.
 
+When `split_after_barcoding=true`, ABM experiment setup assigns barcodes first and then splits directly into replicate pools without an expansion phase. In this mode, initial resistance (and in in vivo ABM, initial `EG1`) is assigned at the barcode level by sampling unique barcodes uniformly (not weighted by clone size). This mode requires `use_lib_probs=true`.
+
 | Parameter | Type (default) | Meaning | Constraints / notes |
 |---|---|---|---|
 | `Nbuff` | `Int64` (`100000`) | Cell-buffer size (live + dead slots). | Increase for large populations; affects memory. |
@@ -426,6 +428,7 @@ Barcode initialization supports three modes: default sequential IDs, generated s
 | `dt_save_at` | `Float64` (`0.1`) | Drug concentration interpolation/save cadence for ABM. | Positive recommended. |
 | `skew_lib` | `Bool` (`false`) | Enable skewed barcode library initialization. | ABM-only feature. |
 | `use_lib_probs` | `Bool` (`false`) | Enable caller-supplied barcode library probabilities. | Mutually exclusive with `skew_lib`. |
+| `split_after_barcoding` | `Bool` (`false`) | Skip expansion and split immediately after barcode assignment for ABM experiment setup. | Requires `use_lib_probs=true`; assigns initial `rho` (and `fEG1` for in vivo ABM) at the barcode level. |
 | `bc_unif` | `Float64` (`0.0`) | Skew/uniformity control for barcodes. | Used when `skew_lib=true`. |
 | `Nbc` | `Int64` (`0`) | Number of barcodes in skewed library mode. | Used when `skew_lib=true`. |
 | `bc_probs` | `Vector{Float64}` (`Float64[]`) | Library barcode probabilities used for direct barcode sampling. | Used when `use_lib_probs=true`; must have length `Nbc` and sum to 1. |

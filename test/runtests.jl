@@ -1,6 +1,7 @@
 ﻿using Test
 using BarcodeModels
 using DataFrames
+using Random
 
 function simulate_hybrid_experiment(model)
     exp = ExperimentParams(
@@ -281,6 +282,91 @@ end
     @test all(cell -> 1.0 <= cell.barcode <= 2.0, respop_cells)
     @test all(cell -> 1.0 <= cell.barcode <= 2.0, resdmg_cells)
     @test all(cell -> 1.0 <= cell.barcode <= 2.0, invivo_cells)
+end
+
+@testset "ABM split-after-barcoding mode" begin
+    @test_throws ErrorException ABMParams(
+        split_after_barcoding = true,
+        use_lib_probs = false
+    )
+
+    abm = ABMParams(
+        Nbuff = 20,
+        use_lib_probs = true,
+        split_after_barcoding = true,
+        Nbc = 3,
+        bc_probs = [0.7, 0.2, 0.1]
+    )
+    @test abm.split_after_barcoding
+
+    params = ResPopParams(
+        b = 1.0,
+        d = 0.1,
+        rho = 0.2,
+        mu = 0.0,
+        sig = 0.0,
+        del = 0.0,
+        al = 0.0,
+        Dc = 0.0,
+        k = 0.0,
+        psi = 0.0,
+        drug_effect = :d
+    )
+    model = ResPop_ABM(params; abm = abm)
+    exp = ExperimentParams(
+        n0 = 9,
+        t_exp = 1.0,
+        tmax = 1.0,
+        t_Pass = Float64[],
+        Nseed = 5,
+        Nmax = 100,
+        Cc = 100,
+        treat_ons = Float64[],
+        treat_offs = Float64[],
+        t_keep = Float64[],
+        Nswitch = 10,
+        n_rep = 2
+    )
+    @test_throws ErrorException BarcodeModels._expand_split_cells_abm(model, exp, 2)
+
+    # Uniform over unique barcodes: with a 99:1 clone-size imbalance across two barcodes,
+    # selecting one barcode should still be close to 50/50 across repeated draws.
+    trials = 200
+    picked_minor = 0
+    Random.seed!(1234)
+    for _ in 1:trials
+        cells = BarcodeModels.CancerCell[]
+        for _ in 1:99
+            push!(cells, BarcodeModels.CancerCell(1.0, false, false, true))
+        end
+        push!(cells, BarcodeModels.CancerCell(2.0, false, false, true))
+        BarcodeModels._assign_resistance_by_barcode!(cells, 0.5, 2)
+        resistant_barcodes = unique([cell.barcode for cell in cells if cell.R])
+        @test length(resistant_barcodes) == 1
+        if resistant_barcodes[1] == 2.0
+            picked_minor += 1
+        end
+    end
+    @test picked_minor / trials > 0.35
+    @test picked_minor / trials < 0.65
+
+    invivo_cells = BarcodeModels.InVivoCancerCell[]
+    for _ in 1:3
+        push!(invivo_cells, BarcodeModels.InVivoCancerCell(1.0, false, false, false, true))
+    end
+    for _ in 1:2
+        push!(invivo_cells, BarcodeModels.InVivoCancerCell(2.0, false, false, false, true))
+    end
+    for _ in 1:4
+        push!(invivo_cells, BarcodeModels.InVivoCancerCell(3.0, false, false, false, true))
+    end
+    BarcodeModels._assign_resistance_by_barcode!(invivo_cells, 0.34, 3)
+    BarcodeModels._assign_engraftment_by_barcode!(invivo_cells, 0.67, 3)
+    for bc in unique([c.barcode for c in invivo_cells])
+        bc_cells = [c for c in invivo_cells if c.barcode == bc]
+        @test length(unique([c.R for c in bc_cells])) == 1
+        @test length(unique([c.EG for c in bc_cells])) == 1
+    end
 end
 
 @testset "BarcodeModels integration (ResDmg hybrid)" begin

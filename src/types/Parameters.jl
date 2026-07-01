@@ -213,8 +213,10 @@ function SimParams(; n0, tmax, Nmax, Cc, Nswitch, treat_ons, treat_offs,
     )
 end
 
-function validate_abm_params(; skew_lib::Bool, use_lib_probs::Bool, Nbc::Int64, bc_probs::Vector{Float64})
+function validate_abm_params(; skew_lib::Bool, use_lib_probs::Bool,
+    split_after_barcoding::Bool, Nbc::Int64, bc_probs::Vector{Float64})
     skew_lib && use_lib_probs && error("use_lib_probs and skew_lib cannot both be true.")
+    split_after_barcoding && !use_lib_probs && error("split_after_barcoding requires use_lib_probs = true.")
     if use_lib_probs
         Nbc > 0 || error("Nbc must be > 0 when use_lib_probs is true.")
         length(bc_probs) == Nbc || error("bc_probs must have length Nbc when use_lib_probs is true.")
@@ -230,6 +232,7 @@ struct ABMParams
     dt_save_at::Float64
     skew_lib::Bool
     use_lib_probs::Bool
+    split_after_barcoding::Bool
     bc_unif::Float64
     Nbc::Int64
     bc_probs::Vector{Float64}
@@ -238,11 +241,13 @@ struct ABMParams
 end
 
 function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
-                   skew_lib=false, use_lib_probs=false, bc_unif=0.0, Nbc=0,
+                   skew_lib=false, use_lib_probs=false, split_after_barcoding=false,
+                   bc_unif=0.0, Nbc=0,
                    bc_probs=Float64[],
                    sub_sample_cells=false, K=0)
     bc_probs_vec = Vector{Float64}(bc_probs)
     validate_abm_params(skew_lib = Bool(skew_lib), use_lib_probs = Bool(use_lib_probs),
+                        split_after_barcoding = Bool(split_after_barcoding),
                         Nbc = Int64(Nbc), bc_probs = bc_probs_vec)
 
     return ABMParams(
@@ -251,6 +256,7 @@ function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
         Float64(dt_save_at),
         Bool(skew_lib),
         Bool(use_lib_probs),
+        Bool(split_after_barcoding),
         Float64(bc_unif),
         Int64(Nbc),
         bc_probs_vec,
