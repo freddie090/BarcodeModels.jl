@@ -284,6 +284,56 @@ end
     @test all(cell -> 1.0 <= cell.barcode <= 2.0, invivo_cells)
 end
 
+@testset "ABM phenotype-by-barcode output" begin
+    default_abm = ABMParams(Nbuff = 20)
+    @test default_abm.full_pheno_bc == false
+
+    full_abm = ABMParams(Nbuff = 20, full_pheno_bc = true)
+    @test full_abm.full_pheno_bc == true
+
+    respop_cells = [
+        BarcodeModels.CancerCell(1.0, false, false, true),
+        BarcodeModels.CancerCell(1.0, true, false, true),
+        BarcodeModels.CancerCell(1.0, false, true, true),
+        BarcodeModels.CancerCell(2.0, false, false, true),
+        BarcodeModels.CancerCell(2.0, true, false, false)
+    ]
+    respop_counts = BarcodeModels.get_pheno_counts(BarcodeModels.alive_cells(respop_cells), "DT1_P1")
+    @test all(in(names(respop_counts)).(["bc", "DT1_P1_S", "DT1_P1_R", "DT1_P1_E"]))
+    bc1 = respop_counts[respop_counts.bc .== 1.0, :][1, :]
+    @test bc1.DT1_P1_S == 1
+    @test bc1.DT1_P1_R == 1
+    @test bc1.DT1_P1_E == 1
+
+    invivo_cells = [
+        BarcodeModels.InVivoCancerCell(1.0, false, false, false, true),
+        BarcodeModels.InVivoCancerCell(1.0, false, false, true, true),
+        BarcodeModels.InVivoCancerCell(1.0, true, false, false, true),
+        BarcodeModels.InVivoCancerCell(2.0, false, true, true, true)
+    ]
+    invivo_counts = BarcodeModels.get_pheno_counts(invivo_cells, "DT1_P1")
+    @test all(in(names(invivo_counts)).(["bc", "DT1_P1_S", "DT1_P1_R", "DT1_P1_E"]))
+    @test !any(contains("EG"), string.(names(invivo_counts)))
+    invivo_bc1 = invivo_counts[invivo_counts.bc .== 1.0, :][1, :]
+    @test invivo_bc1.DT1_P1_S == 2
+    @test invivo_bc1.DT1_P1_R == 1
+    @test invivo_bc1.DT1_P1_E == 0
+
+    resdmg_cells = [
+        BarcodeModels.ResDmgCell(1.0, false, false, false, true),
+        BarcodeModels.ResDmgCell(1.0, true, false, false, true),
+        BarcodeModels.ResDmgCell(1.0, false, true, false, true),
+        BarcodeModels.ResDmgCell(1.0, false, false, true, true)
+    ]
+    resdmg_counts = BarcodeModels.get_pheno_counts(resdmg_cells, "DT1_P1")
+    @test all(in(names(resdmg_counts)).(["bc", "DT1_P1_S", "DT1_P1_DS", "DT1_P1_DR", "DT1_P1_R"]))
+    resdmg_bc1 = resdmg_counts[resdmg_counts.bc .== 1.0, :][1, :]
+    @test resdmg_bc1.DT1_P1_S == 1
+    @test resdmg_bc1.DT1_P1_DS == 1
+    @test resdmg_bc1.DT1_P1_DR == 1
+    @test resdmg_bc1.DT1_P1_R == 1
+end
+
 @testset "ABM split-after-barcoding mode" begin
     @test_throws ErrorException ABMParams(
         split_after_barcoding = true,
@@ -628,6 +678,11 @@ end
     treated_out = simulate_simple_run_treated(respop_abm)
     @test haskey(treated_out, "sol_df")
     @test haskey(treated_out, "lin_df")
+
+    respop_abm_full_pheno = ResPop_ABM(respop_params; abm = ABMParams(Nbuff = 200, t_frac = 0.2, dt_save_at = 0.5, full_pheno_bc = true))
+    full_pheno_out = simulate_simple_run(respop_abm_full_pheno)
+    @test haskey(full_pheno_out, "pheno_bc_df")
+    @test !any(contains("EG"), string.(names(full_pheno_out["pheno_bc_df"])))
 end
 
 @testset "ResPopInVivo implementation" begin

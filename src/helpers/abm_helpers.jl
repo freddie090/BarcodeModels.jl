@@ -195,6 +195,54 @@ function get_counts(cells, rep_name::String)
     return df
 end
 
+function _abm_pheno_label(cell)
+    if hasproperty(cell, :DS) && getproperty(cell, :DS)
+        return "DS"
+    elseif hasproperty(cell, :DR) && getproperty(cell, :DR)
+        return "DR"
+    elseif hasproperty(cell, :E) && getproperty(cell, :E)
+        return "E"
+    elseif hasproperty(cell, :R) && getproperty(cell, :R)
+        return "R"
+    else
+        return "S"
+    end
+end
+
+function _abm_pheno_labels(cells)
+    if any(cell -> hasproperty(cell, :DS) || hasproperty(cell, :DR), cells)
+        return ["S", "DS", "DR", "R"]
+    else
+        return ["S", "R", "E"]
+    end
+end
+
+function get_pheno_counts(cells, rep_name::String)
+    pheno_labels = _abm_pheno_labels(cells)
+    if length(cells) == 0
+        return DataFrame(bc = Float64[])
+    end
+
+    bcs = sort(unique(map(x -> x.barcode, cells)))
+    df = DataFrame(bc = bcs)
+    for pheno in pheno_labels
+        df[!, Symbol(rep_name, "_", pheno)] = [
+            count(cell -> cell.barcode == bc && _abm_pheno_label(cell) == pheno, cells)
+            for bc in bcs
+        ]
+    end
+    return df
+end
+
+function rename_pheno_count_df!(df::DataFrame, rep_name::String)
+    new_names = Symbol[:bc]
+    for name in string.(names(df)[2:end])
+        push!(new_names, Symbol(rep_name, "_", last(split(name, "_"))))
+    end
+    rename!(df, new_names)
+    return df
+end
+
 function update_track_vec!(kmc_out,
     Nvec::Vector{Int64},
     nS_vec::Vector{Int64}, nR_vec::Vector{Int64}, nE_vec::Vector{Int64},

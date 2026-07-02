@@ -238,13 +238,14 @@ struct ABMParams
     bc_probs::Vector{Float64}
     sub_sample_cells::Bool
     K::Int64
+    full_pheno_bc::Bool
 end
 
 function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
                    skew_lib=false, use_lib_probs=false, split_after_barcoding=false,
                    bc_unif=0.0, Nbc=0,
                    bc_probs=Float64[],
-                   sub_sample_cells=false, K=0)
+                   sub_sample_cells=false, K=0, full_pheno_bc=false)
     bc_probs_vec = Vector{Float64}(bc_probs)
     validate_abm_params(skew_lib = Bool(skew_lib), use_lib_probs = Bool(use_lib_probs),
                         split_after_barcoding = Bool(split_after_barcoding),
@@ -261,7 +262,8 @@ function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
         Int64(Nbc),
         bc_probs_vec,
         Bool(sub_sample_cells),
-        Int64(K)
+        Int64(K),
+        Bool(full_pheno_bc)
     )
 end
 

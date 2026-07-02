@@ -5,11 +5,16 @@ function _record_abm_outputs!(kmc_out, cells, rep::Int64, curr_P::Int64,
     tvec::Vector{Float64}, Pvec::Vector{Int64};
     sub_sample_cells::Bool = false, K::Int64 = 0,
     samp_cell_lin_df_vec::Vector{DataFrame} = DataFrame[],
+    pheno_bc_df_vec::Vector{DataFrame} = DataFrame[],
+    full_pheno_bc::Bool = false,
     cond::String = "DT")
 
     live_cells = alive_cells(cells)
     bc_df = get_counts(live_cells, string(cond, rep, "_P", curr_P))
     push!(cell_lin_df_vec, bc_df)
+    if full_pheno_bc
+        push!(pheno_bc_df_vec, get_pheno_counts(live_cells, string(cond, rep, "_P", curr_P)))
+    end
 
     if sub_sample_cells
         if K <= length(live_cells)
@@ -88,11 +93,16 @@ function _record_resdmg_abm_outputs!(kmc_out, cells, rep::Int64, curr_P::Int64,
     Nvec::Vector{Int64}, nS_vec::Vector{Int64}, nDS_vec::Vector{Int64}, nDR_vec::Vector{Int64}, nR_vec::Vector{Int64},
     tvec::Vector{Float64}, Pvec::Vector{Int64};
     sub_sample_cells::Bool = false, K::Int64 = 0,
-    samp_cell_lin_df_vec::Vector{DataFrame} = DataFrame[])
+    samp_cell_lin_df_vec::Vector{DataFrame} = DataFrame[],
+    pheno_bc_df_vec::Vector{DataFrame} = DataFrame[],
+    full_pheno_bc::Bool = false)
 
     live_cells = alive_cells(cells)
     bc_df = get_counts(live_cells, string("DT", rep, "_P", curr_P))
     push!(cell_lin_df_vec, bc_df)
+    if full_pheno_bc
+        push!(pheno_bc_df_vec, get_pheno_counts(live_cells, string("DT", rep, "_P", curr_P)))
+    end
 
     if sub_sample_cells
         if K <= length(live_cells)

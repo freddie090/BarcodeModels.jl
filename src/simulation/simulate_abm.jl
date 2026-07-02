@@ -17,7 +17,8 @@ function _run_abm_passage_experiment!(
     treat::Bool,
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
-    K::Int64 = 0
+    K::Int64 = 0,
+    full_pheno_bc::Bool = false
 )
     progress_tol = 0.1
 
@@ -50,6 +51,7 @@ function _run_abm_passage_experiment!(
     next_t = compute_next_t()
     cell_lin_df_vec = DataFrame[]
     samp_cell_lin_df_vec = DataFrame[]
+    pheno_bc_df_vec = DataFrame[]
     Nvec = Int64[]
     nS_vec = Int64[]
     nR_vec = Int64[]
@@ -87,14 +89,18 @@ function _run_abm_passage_experiment!(
                 _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                      Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                                      sub_sample_cells = sub_sample_cells, K = K,
-                                     samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                     samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                     pheno_bc_df_vec = pheno_bc_df_vec,
+                                     full_pheno_bc = full_pheno_bc)
                 curr_t = min(max(kmc_last_t, curr_t), tmax)
                 break
             else
                 _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                      Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                                      sub_sample_cells = sub_sample_cells, K = K,
-                                     samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                     samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                     pheno_bc_df_vec = pheno_bc_df_vec,
+                                     full_pheno_bc = full_pheno_bc)
                 if live_count < Nseed
                     break
                 else
@@ -112,14 +118,18 @@ function _run_abm_passage_experiment!(
             _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                  Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                                  sub_sample_cells = sub_sample_cells, K = K,
-                                 samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                 samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                 pheno_bc_df_vec = pheno_bc_df_vec,
+                                 full_pheno_bc = full_pheno_bc)
             curr_t = min(max(kmc_last_t, curr_t), tmax)
             break
         elseif kmc_last_t >= (tmax - progress_tol)
             _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                  Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                                  sub_sample_cells = sub_sample_cells, K = K,
-                                 samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                 samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                 pheno_bc_df_vec = pheno_bc_df_vec,
+                                 full_pheno_bc = full_pheno_bc)
             curr_t = min(max(kmc_last_t, curr_t), tmax)
             break
         elseif tP_count < curr_P
@@ -138,7 +148,9 @@ function _run_abm_passage_experiment!(
                     _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                          Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                                          sub_sample_cells = sub_sample_cells, K = K,
-                                         samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                         samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                         pheno_bc_df_vec = pheno_bc_df_vec,
+                                         full_pheno_bc = full_pheno_bc)
                     live_cells = alive_cells(cells)
                     cells = sample(live_cells, Nseed, replace = false)
                     extend_with_dead_cells!(cells, Nbuff, make_dead_cell)
@@ -163,6 +175,11 @@ function _run_abm_passage_experiment!(
             temp_df = deepcopy(cell_lin_df_vec[i - 1])
             rename!(temp_df, [:bc, Symbol("DT", rep, "_P", i)])
             push!(cell_lin_df_vec, temp_df)
+            if full_pheno_bc
+                pheno_temp_df = deepcopy(pheno_bc_df_vec[i - 1])
+                rename_pheno_count_df!(pheno_temp_df, string("DT", rep, "_P", i))
+                push!(pheno_bc_df_vec, pheno_temp_df)
+            end
         end
     end
 
@@ -177,6 +194,9 @@ function _run_abm_passage_experiment!(
     )
     if sub_sample_cells
         out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
+    end
+    if full_pheno_bc
+        out["pheno_bc_df_vec"] = pheno_bc_df_vec
     end
     return out
 end
@@ -313,6 +333,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
     bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
+    full_pheno_bc = _kw(kwargs, :full_pheno_bc, model.abm.full_pheno_bc)
     run_IC = _kw(kwargs, :run_IC, exp.run_IC)
     IC_n0 = _kw(kwargs, :IC_n0, exp.IC_n0)
     IC_tmax = _kw(kwargs, :IC_tmax, exp.IC_tmax)
@@ -349,6 +370,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     fin_u_outs = Float64[]
     lin_df_outs = DataFrame[]
     sub_lin_df_outs = DataFrame[]
+    pheno_bc_df_outs = DataFrame[]
     sim_dfs = DataFrame[]
 
     if !just_lin && run_colony
@@ -420,7 +442,8 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
             dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
             R_real = R_real, t_frac = t_frac, rep = i,
             treat = drug_treatment, drug_effect = de,
-            sub_sample_cells = sub_sample_cells, K = K
+            sub_sample_cells = sub_sample_cells, K = K,
+            full_pheno_bc = full_pheno_bc
         )
 
         sim_df = DataFrame(
@@ -434,6 +457,9 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
         push!(sim_dfs, sim_df)
 
         push!(lin_df_outs, join_dfs(sim["cell_lin_df_vec"], "bc"))
+        if full_pheno_bc
+            push!(pheno_bc_df_outs, join_dfs(sim["pheno_bc_df_vec"], "bc"))
+        end
         if sub_sample_cells
             push!(sub_lin_df_outs, join_dfs(sim["sub_samp_cell_lin_df_vec"], "bc"))
         end
@@ -494,6 +520,9 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     if sub_sample_cells
         out["sub_lin_df"] = join_dfs(sub_lin_df_outs, "bc")
     end
+    if full_pheno_bc
+        out["pheno_bc_df"] = join_dfs(pheno_bc_df_outs, "bc")
+    end
     return out
 end
 
@@ -517,7 +546,8 @@ function _run_abm_passage_experiment!(
     treat::Bool,
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
-    K::Int64 = 0
+    K::Int64 = 0,
+    full_pheno_bc::Bool = false
 )
     progress_tol = 0.1
 
@@ -550,6 +580,7 @@ function _run_abm_passage_experiment!(
     next_t = compute_next_t()
     cell_lin_df_vec = DataFrame[]
     samp_cell_lin_df_vec = DataFrame[]
+    pheno_bc_df_vec = DataFrame[]
     Nvec = Int64[]
     nS_vec = Int64[]
     nDS_vec = Int64[]
@@ -588,14 +619,18 @@ function _run_abm_passage_experiment!(
                 _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                             Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                             sub_sample_cells = sub_sample_cells, K = K,
-                                            samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                            samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                            pheno_bc_df_vec = pheno_bc_df_vec,
+                                            full_pheno_bc = full_pheno_bc)
                 curr_t = min(max(kmc_last_t, curr_t), tmax)
                 break
             else
                 _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                             Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                             sub_sample_cells = sub_sample_cells, K = K,
-                                            samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                            samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                            pheno_bc_df_vec = pheno_bc_df_vec,
+                                            full_pheno_bc = full_pheno_bc)
                 if live_count < Nseed
                     break
                 else
@@ -613,14 +648,18 @@ function _run_abm_passage_experiment!(
             _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                         Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                         sub_sample_cells = sub_sample_cells, K = K,
-                                        samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                        samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                        pheno_bc_df_vec = pheno_bc_df_vec,
+                                        full_pheno_bc = full_pheno_bc)
             curr_t = min(max(kmc_last_t, curr_t), tmax)
             break
         elseif kmc_last_t >= (tmax - progress_tol)
             _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                         Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                         sub_sample_cells = sub_sample_cells, K = K,
-                                        samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                        samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                        pheno_bc_df_vec = pheno_bc_df_vec,
+                                        full_pheno_bc = full_pheno_bc)
             curr_t = min(max(kmc_last_t, curr_t), tmax)
             break
         elseif tP_count < curr_P
@@ -639,7 +678,9 @@ function _run_abm_passage_experiment!(
                     _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                                 Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                                 sub_sample_cells = sub_sample_cells, K = K,
-                                                samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                                samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                                pheno_bc_df_vec = pheno_bc_df_vec,
+                                                full_pheno_bc = full_pheno_bc)
                     live_cells = alive_cells(cells)
                     cells = sample(live_cells, Nseed, replace = false)
                     extend_with_dead_cells!(cells, Nbuff, make_dead_resdmg_cell)
@@ -664,6 +705,11 @@ function _run_abm_passage_experiment!(
             temp_df = deepcopy(cell_lin_df_vec[i - 1])
             rename!(temp_df, [:bc, Symbol("DT", rep, "_P", i)])
             push!(cell_lin_df_vec, temp_df)
+            if full_pheno_bc
+                pheno_temp_df = deepcopy(pheno_bc_df_vec[i - 1])
+                rename_pheno_count_df!(pheno_temp_df, string("DT", rep, "_P", i))
+                push!(pheno_bc_df_vec, pheno_temp_df)
+            end
         end
     end
 
@@ -679,6 +725,9 @@ function _run_abm_passage_experiment!(
     )
     if sub_sample_cells
         out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
+    end
+    if full_pheno_bc
+        out["pheno_bc_df_vec"] = pheno_bc_df_vec
     end
     return out
 end
@@ -815,6 +864,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
     bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
+    full_pheno_bc = _kw(kwargs, :full_pheno_bc, model.abm.full_pheno_bc)
     run_IC = _kw(kwargs, :run_IC, exp.run_IC)
     IC_n0 = _kw(kwargs, :IC_n0, exp.IC_n0)
     IC_tmax = _kw(kwargs, :IC_tmax, exp.IC_tmax)
@@ -851,6 +901,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
     fin_u_outs = Float64[]
     lin_df_outs = DataFrame[]
     sub_lin_df_outs = DataFrame[]
+    pheno_bc_df_outs = DataFrame[]
     sim_dfs = DataFrame[]
 
     if !just_lin && run_colony
@@ -922,7 +973,8 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
             dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
             R_real = R_real, t_frac = t_frac, rep = i,
             treat = drug_treatment, drug_effect = de,
-            sub_sample_cells = sub_sample_cells, K = K
+            sub_sample_cells = sub_sample_cells, K = K,
+            full_pheno_bc = full_pheno_bc
         )
 
         sim_df = DataFrame(
@@ -937,6 +989,9 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
         push!(sim_dfs, sim_df)
 
         push!(lin_df_outs, join_dfs(sim["cell_lin_df_vec"], "bc"))
+        if full_pheno_bc
+            push!(pheno_bc_df_outs, join_dfs(sim["pheno_bc_df_vec"], "bc"))
+        end
         if sub_sample_cells
             push!(sub_lin_df_outs, join_dfs(sim["sub_samp_cell_lin_df_vec"], "bc"))
         end
@@ -997,6 +1052,9 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
     if sub_sample_cells
         out["sub_lin_df"] = join_dfs(sub_lin_df_outs, "bc")
     end
+    if full_pheno_bc
+        out["pheno_bc_df"] = join_dfs(pheno_bc_df_outs, "bc")
+    end
     return out
 end
 
@@ -1016,7 +1074,8 @@ function _run_abm_simple!(
     treat::Bool,
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
-    K::Int64 = 0
+    K::Int64 = 0,
+    full_pheno_bc::Bool = false
 )
     sim = ABMSimParams(
         t0 = t0,
@@ -1036,6 +1095,7 @@ function _run_abm_simple!(
 
     cell_lin_df_vec = DataFrame[]
     samp_cell_lin_df_vec = DataFrame[]
+    pheno_bc_df_vec = DataFrame[]
     Nvec = Int64[]
     nS_vec = Int64[]
     nR_vec = Int64[]
@@ -1046,7 +1106,9 @@ function _run_abm_simple!(
     _record_abm_outputs!(kmc_out, cells, rep, 1, cell_lin_df_vec,
                          Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                          sub_sample_cells = sub_sample_cells, K = K,
-                         samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                         samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                         pheno_bc_df_vec = pheno_bc_df_vec,
+                         full_pheno_bc = full_pheno_bc)
 
     out = Dict(
         "cell_lin_df_vec" => cell_lin_df_vec,
@@ -1059,6 +1121,9 @@ function _run_abm_simple!(
     )
     if sub_sample_cells
         out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
+    end
+    if full_pheno_bc
+        out["pheno_bc_df_vec"] = pheno_bc_df_vec
     end
     return out
 end
@@ -1079,7 +1144,8 @@ function _run_abm_simple!(
     treat::Bool,
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
-    K::Int64 = 0
+    K::Int64 = 0,
+    full_pheno_bc::Bool = false
 )
     sim = ABMSimParams(
         t0 = t0,
@@ -1099,6 +1165,7 @@ function _run_abm_simple!(
 
     cell_lin_df_vec = DataFrame[]
     samp_cell_lin_df_vec = DataFrame[]
+    pheno_bc_df_vec = DataFrame[]
     Nvec = Int64[]
     nS_vec = Int64[]
     nDS_vec = Int64[]
@@ -1110,7 +1177,9 @@ function _run_abm_simple!(
     _record_resdmg_abm_outputs!(kmc_out, cells, rep, 1, cell_lin_df_vec,
                                 Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                 sub_sample_cells = sub_sample_cells, K = K,
-                                samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                pheno_bc_df_vec = pheno_bc_df_vec,
+                                full_pheno_bc = full_pheno_bc)
 
     out = Dict(
         "cell_lin_df_vec" => cell_lin_df_vec,
@@ -1125,6 +1194,9 @@ function _run_abm_simple!(
     if sub_sample_cells
         out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
     end
+    if full_pheno_bc
+        out["pheno_bc_df_vec"] = pheno_bc_df_vec
+    end
     return out
 end
 
@@ -1138,6 +1210,7 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
     bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
+    full_pheno_bc = _kw(kwargs, :full_pheno_bc, model.abm.full_pheno_bc)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     model_eff = _with_drug_effect(model, de)
@@ -1154,7 +1227,8 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
         dt_save_at = dt_save_at,
         R_real = R_real, t_frac = t_frac, rep = 1,
         treat = drug_treatment, drug_effect = de,
-        sub_sample_cells = false, K = 0
+        sub_sample_cells = false, K = 0,
+        full_pheno_bc = full_pheno_bc
     )
 
     sol_df = DataFrame(
@@ -1165,10 +1239,14 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
         nE = sim_out["nE_vec"]
     )
 
-    return Dict(
+    out = Dict(
         "lin_df" => join_dfs(sim_out["cell_lin_df_vec"], "bc"),
         "sol_df" => sol_df
     )
+    if full_pheno_bc
+        out["pheno_bc_df"] = join_dfs(sim_out["pheno_bc_df_vec"], "bc")
+    end
+    return out
 end
 
 function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...)
@@ -1181,6 +1259,7 @@ function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
     bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
+    full_pheno_bc = _kw(kwargs, :full_pheno_bc, model.abm.full_pheno_bc)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     model_eff = _with_drug_effect(model, de)
@@ -1197,7 +1276,8 @@ function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...
         dt_save_at = dt_save_at,
         R_real = R_real, t_frac = t_frac, rep = 1,
         treat = drug_treatment, drug_effect = de,
-        sub_sample_cells = false, K = 0
+        sub_sample_cells = false, K = 0,
+        full_pheno_bc = full_pheno_bc
     )
 
     sol_df = DataFrame(
@@ -1209,10 +1289,14 @@ function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...
         nR = sim_out["nR_vec"]
     )
 
-    return Dict(
+    out = Dict(
         "lin_df" => join_dfs(sim_out["cell_lin_df_vec"], "bc"),
         "sol_df" => sol_df
     )
+    if full_pheno_bc
+        out["pheno_bc_df"] = join_dfs(sim_out["pheno_bc_df_vec"], "bc")
+    end
+    return out
 end
 
 function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams, n_rep::Int64;
@@ -1400,6 +1484,7 @@ function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams,
     if inc_pot && pot_outputs !== nothing
         pot_outputs["sol_df"] = _invivo_abm_sol_df(pot_sim; cond = "POT", rep = 0)
         pot_outputs["lin_df"] = get_counts(exp_cells, "POT_P0")
+        pot_outputs["pheno_bc_df"] = get_pheno_counts(exp_cells, "POT_P0")
     end
 
     n_batches = length(rep_design)
@@ -1447,13 +1532,15 @@ function _run_abm_passage_experiment_invivo!(
     drug_effect::Symbol,
     cond::String = "DT",
     sub_sample_cells::Bool = false,
-    K::Int64 = 0
+    K::Int64 = 0,
+    full_pheno_bc::Bool = false
 )
     t_pass_vec = _passage_times(t_Pass, tmax)
     boundaries = vcat([t0], filter(x -> x < tmax, t_pass_vec), [tmax])
 
     cell_lin_df_vec = DataFrame[]
     samp_cell_lin_df_vec = DataFrame[]
+    pheno_bc_df_vec = DataFrame[]
     Nvec = Int64[]
     nS_vec = Int64[]
     nR_vec = Int64[]
@@ -1488,6 +1575,8 @@ function _run_abm_passage_experiment_invivo!(
                              Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                              sub_sample_cells = sub_sample_cells, K = K,
                              samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                             pheno_bc_df_vec = pheno_bc_df_vec,
+                             full_pheno_bc = full_pheno_bc,
                              cond = cond)
         _append_invivo_abm_eg_outputs!(kmc_out,
                                        nS_EG0_vec, nS_EG1_vec,
@@ -1531,6 +1620,9 @@ function _run_abm_passage_experiment_invivo!(
     if sub_sample_cells
         out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
     end
+    if full_pheno_bc
+        out["pheno_bc_df_vec"] = pheno_bc_df_vec
+    end
     return out
 end
 
@@ -1551,6 +1643,7 @@ function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
     bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
+    full_pheno_bc = _kw(kwargs, :full_pheno_bc, model.abm.full_pheno_bc)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
@@ -1580,11 +1673,15 @@ function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams
     fin_rep_outs = Int64[]
     lin_df_outs = DataFrame[]
     sub_lin_df_outs = DataFrame[]
+    pheno_bc_df_outs = DataFrame[]
     sim_dfs = DataFrame[]
     engraft_rows = DataFrame[split_engraft_df]
 
     if inc_pot
         push!(lin_df_outs, pot_outputs["lin_df"])
+        if full_pheno_bc
+            push!(pheno_bc_df_outs, pot_outputs["pheno_bc_df"])
+        end
         if !just_lin
             push!(sim_dfs, pot_outputs["sol_df"])
         end
@@ -1605,11 +1702,15 @@ function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams
             R_real = R_real, t_frac = t_frac, rep = design.rep,
             treat = design.treat, drug_effect = de,
             cond = design.cond,
-            sub_sample_cells = sub_sample_cells, K = K
+            sub_sample_cells = sub_sample_cells, K = K,
+            full_pheno_bc = full_pheno_bc
         )
 
         push!(engraft_rows, sim["engraft_df"])
         push!(lin_df_outs, join_dfs(sim["cell_lin_df_vec"], "bc"))
+        if full_pheno_bc
+            push!(pheno_bc_df_outs, join_dfs(sim["pheno_bc_df_vec"], "bc"))
+        end
         if sub_sample_cells
             push!(sub_lin_df_outs, join_dfs(sim["sub_samp_cell_lin_df_vec"], "bc"))
         end
@@ -1632,6 +1733,9 @@ function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams
 
     if sub_sample_cells
         out["sub_lin_df"] = join_dfs(sub_lin_df_outs, "bc")
+    end
+    if full_pheno_bc
+        out["pheno_bc_df"] = join_dfs(pheno_bc_df_outs, "bc")
     end
 
     if !just_lin
@@ -1661,7 +1765,8 @@ function _run_abm_simple!(
     treat::Bool,
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
-    K::Int64 = 0
+    K::Int64 = 0,
+    full_pheno_bc::Bool = false
 )
     sim = ABMSimParams(
         t0 = t0,
@@ -1680,6 +1785,7 @@ function _run_abm_simple!(
 
     cell_lin_df_vec = DataFrame[]
     samp_cell_lin_df_vec = DataFrame[]
+    pheno_bc_df_vec = DataFrame[]
     Nvec = Int64[]
     nS_vec = Int64[]
     nR_vec = Int64[]
@@ -1696,7 +1802,9 @@ function _run_abm_simple!(
     _record_abm_outputs!(kmc_out, cells, rep, 1, cell_lin_df_vec,
                          Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                          sub_sample_cells = sub_sample_cells, K = K,
-                         samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                         samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                         pheno_bc_df_vec = pheno_bc_df_vec,
+                         full_pheno_bc = full_pheno_bc)
     _append_invivo_abm_eg_outputs!(kmc_out,
                                    nS_EG0_vec, nS_EG1_vec,
                                    nR_EG0_vec, nR_EG1_vec,
@@ -1720,6 +1828,9 @@ function _run_abm_simple!(
     if sub_sample_cells
         out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
     end
+    if full_pheno_bc
+        out["pheno_bc_df_vec"] = pheno_bc_df_vec
+    end
     return out
 end
 
@@ -1733,6 +1844,7 @@ function _simulate_simple_abm(model::ResPopInVivo_ABM, sim::SimpleSimParams; kwa
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
     bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
+    full_pheno_bc = _kw(kwargs, :full_pheno_bc, model.abm.full_pheno_bc)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     model_eff = _with_drug_effect(model, de)
@@ -1749,7 +1861,8 @@ function _simulate_simple_abm(model::ResPopInVivo_ABM, sim::SimpleSimParams; kwa
         dt_save_at = dt_save_at,
         R_real = R_real, t_frac = t_frac, rep = 1,
         treat = drug_treatment, drug_effect = de,
-        sub_sample_cells = false, K = 0
+        sub_sample_cells = false, K = 0,
+        full_pheno_bc = full_pheno_bc
     )
 
     sol_df = DataFrame(
@@ -1768,9 +1881,13 @@ function _simulate_simple_abm(model::ResPopInVivo_ABM, sim::SimpleSimParams; kwa
         N = sim_out["Nvec"]
     )
 
-    return Dict(
+    out = Dict(
         "lin_df" => join_dfs(sim_out["cell_lin_df_vec"], "bc"),
         "sol_df" => sol_df
     )
+    if full_pheno_bc
+        out["pheno_bc_df"] = join_dfs(sim_out["pheno_bc_df_vec"], "bc")
+    end
+    return out
 end
 

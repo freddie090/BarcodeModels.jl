@@ -122,6 +122,7 @@ Drug exposure is modelled through a time-dependent effective concentration $D_c(
 - `sol_df`: time-series population counts with columns such as `nS_EG0`, `nS_EG1`, `nR_EG0`, `nR_EG1`, `nE_EG0`, `nE_EG1`, `nS`, `nR`, `nE`, `n_EG0`, `n_EG1`, and `N`.
 - With `inc_pot=true`, `sol_df` includes the pre-replicate expanded pool as `cond = "POT"`, `rep = 0`, and `passage = 0`.
 - ABM `lin_df`: barcode abundance table with condition-prefixed replicate columns (`DT...` for drug-treated, `CO...` for untreated controls). With `inc_pot=true`, the first barcode count column is `POT_P0`.
+- ABM `pheno_bc_df`: optional phenotype-by-barcode abundance table when `ABMParams(full_pheno_bc=true)`, with columns such as `DT1_P1_S` and `DT1_P1_R`; in vivo outputs collapse across `EG0`/`EG1`.
 
 
 
@@ -144,6 +145,7 @@ Features of the simple simulation layer include:
 
 - `sol_df`: time-series population output table for the simulated run.
 - `lin_df`: barcode abundance table for ABM model classes.
+- `pheno_bc_df`: optional ABM phenotype-by-barcode table when `ABMParams(full_pheno_bc=true)`.
 - `lineage_df`: EvBC-only ground-truth lineage table with parent-child relationships and lineage metadata.
 
 Runnable examples are provided in `Quick start`.
@@ -176,6 +178,7 @@ Features of the experimental design include:
 - `engraft_df`: in vivo realized engraftment table for `ResPopInVivo` experiment workflows.
 - In vivo `sol_df` may include `cond = "POT"`, `rep = 0`, `passage = 0` rows when `inc_pot=true`.
 - `sub_lin_df`: optional subsampled barcode table when `sub_sample_cells=true`.
+- `pheno_bc_df`: optional ABM phenotype-by-barcode table when `ABMParams(full_pheno_bc=true)`, using columns like `DT1_P1_R`.
 - `lineage_df`: EvBC-only ground-truth lineage table with node-level lineage metadata.
 
 
@@ -518,6 +521,7 @@ You can call either:
 Common keys:
 - `"sol_df"`: time-series simulation table
 - `"lin_df"`: barcode count table across replicate/passage snapshots
+- `"pheno_bc_df"`: optional phenotype-by-barcode count table when `ABMParams(full_pheno_bc=true)`
 - `"lineage_df"`: ground-truth lineage table
 
 Additional keys:
