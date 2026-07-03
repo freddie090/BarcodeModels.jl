@@ -1679,7 +1679,7 @@ function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams
 
     if inc_pot
         push!(lin_df_outs, pot_outputs["lin_df"])
-        if full_pheno_bc
+        if full_pheno_bc && haskey(pot_outputs, "pheno_bc_df")
             push!(pheno_bc_df_outs, pot_outputs["pheno_bc_df"])
         end
         if !just_lin

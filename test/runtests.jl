@@ -873,6 +873,13 @@ end
     @test string(names(abm_pot_exp["lin_df"])[2]) == "POT_P0"
     test_invivo_sol_df_counts(abm_pot_exp["sol_df"])
 
+    abm_full_pheno = ResPopInVivo_ABM(params; abm = ABMParams(Nbuff = 300, t_frac = 0.2, dt_save_at = 0.2, full_pheno_bc = true))
+    abm_full_pheno_pot_exp = simulate_experiment(abm_full_pheno, pot_exp)
+    @test haskey(abm_full_pheno_pot_exp, "pheno_bc_df")
+    pheno_bc_names = string.(names(abm_full_pheno_pot_exp["pheno_bc_df"]))
+    @test all(in(pheno_bc_names).(["POT_P0_S", "POT_P0_R", "POT_P0_E"]))
+    @test !any(name -> occursin("EG", name), pheno_bc_names)
+
     early_stop_params = ResPopInVivoParams(
         b = 1.0,
         d = 0.0,
