@@ -36,7 +36,8 @@ function _copy_respop_params(params::ResPopParams; rho = params.rho, al = params
         Dc = params.Dc,
         k = params.k,
         psi = params.psi,
-        drug_effect = drug_effect
+        drug_effect = drug_effect,
+        transition_coupling = params.transition_coupling
     )
 end
 
@@ -54,7 +55,8 @@ function _copy_resdmg_params(params::ResDmgParams; rho = params.rho, drug_effect
         Dc = params.Dc,
         k = params.k,
         psi = params.psi,
-        drug_effect = drug_effect
+        drug_effect = drug_effect,
+        transition_coupling = params.transition_coupling
     )
 end
 

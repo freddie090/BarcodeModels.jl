@@ -1,5 +1,9 @@
 ﻿using Test
+using DataFrames
 using BarcodeModels
+using Random
+
+Random.seed!(20261012)
 
 function simulate_hybrid_experiment(model)
     exp = ExperimentParams(
@@ -134,8 +138,8 @@ end
 
 function simulate_abm_experiment_vector_tmax(model)
     exp = ExperimentParams(
-        n0 = 5,
-        t_exp = 1.0,
+        n0 = 10,
+        t_exp = 0.0,
         tmax = [1.0, 2.0],
         t_Pass = Float64[],
         Nseed = 5,
@@ -716,4 +720,3 @@ end
     )
     @test_throws ErrorException ResDmg_ABM(invalid_resdmg_params)
 end
-

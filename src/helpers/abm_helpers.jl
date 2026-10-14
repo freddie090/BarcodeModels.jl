@@ -1,7 +1,8 @@
 function drug_treat_concs(tmax::Float64, k::Float64, Dc::Float64,
     treat_ons::Vector{Float64}, treat_offs::Vector{Float64}, dt_save_at::Float64)
 
-    p = [Dc, 0.0]
+    # Discrete callbacks do not apply the initial-time onset; initialise its slope.
+    p = [Dc, (0.0 in treat_ons && !(0.0 in treat_offs)) ? k : 0.0]
     u0 = [0.0, 0.0]
     tspan = (0.0, tmax)
 
@@ -89,7 +90,9 @@ function order_cells!(cell_arr, make_dead_cell::Function)
     end
 
     for i in alive_index:dead_index
-        cell_arr[i] = make_dead_cell()
+        if !cell_arr[i].alive
+            cell_arr[i] = make_dead_cell()
+        end
     end
 end
 

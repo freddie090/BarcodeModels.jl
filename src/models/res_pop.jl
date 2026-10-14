@@ -1,4 +1,4 @@
-﻿"""Resistance population (res_pop) model (validates parameters on construction)."""
+"""Resistance population (res_pop) model (validates parameters on construction)."""
 struct ResPop <: HybridModel
     params::ResPopParams
     function ResPop(params::ResPopParams)
@@ -10,7 +10,7 @@ end
 """Construct a `ResPop` from keyword arguments forwarded to `ResPopParams`."""
 ResPop(; kwargs...) = ResPop(ResPopParams(; kwargs...))
 
-"""Build component-rate parameters and return them with baseline rates."""
+"""Build full biological rates and event representation flags, with baseline rates."""
 function build_component_params(params::ResPopParams)
     bS = params.b
     dS = params.d
@@ -21,13 +21,27 @@ function build_component_params(params::ResPopParams)
     bE = params.b
     dE = params.d
 
-    p = ComponentArray(
-        bS_o = 0.0, dS_o = 0.0, bS_j = bS, dS_j = dS,
-        bR_o = 0.0, dR_o = 0.0, bR_j = bR, dR_j = dR,
-        bE_o = 0.0, dE_o = 0.0, bE_j = bE, dE_j = dE,
+    phenotype_modes = params.transition_coupling === :birth_coupled ? (
+        S_asymmetric_R_birth_ode = 0.0,
+        R_asymmetric_S_birth_ode = 0.0,
+        R_asymmetric_E_birth_ode = 0.0,
+    ) : (
+        S_to_R_transition_ode = 0.0,
+        R_to_S_transition_ode = 0.0,
+        R_to_E_transition_ode = 0.0,
+    )
+
+    p = ComponentArray(;
+        bS = bS, dS = dS, bR = bR, dR = dR, bE = bE, dE = dE,
         Dc = params.Dc, kp = 0.0, psi = params.psi,
-        mu_o = 0.0, sig_o = 0.0, al_o = 0.0,
-        mu_j = params.mu, sig_j = params.sig, al_j = params.al
+        mu = params.mu, sig = params.sig, al = params.al,
+        S_symmetric_birth_ode = 0.0,
+        S_death_ode = 0.0,
+        R_symmetric_birth_ode = 0.0,
+        R_death_ode = 0.0,
+        E_symmetric_birth_ode = 0.0,
+        E_death_ode = 0.0,
+        phenotype_modes...
     )
 
     return p, bS, dS, bR, dR, bE, dE
@@ -39,7 +53,8 @@ Run the hybrid growth/kill model with a model, state, and simulation settings.
 Arguments: `model::ResPop`, `state::ResPopState`, `sim::SimParams`.
 Returns: `ODESolution`.
 """
-function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams; treat::Bool = sim.treat)
+function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams;
+    treat::Bool = sim.treat, rng = Random.default_rng(), _setup_only::Bool = false, solve_kwargs...)
     sim_eff = treat == sim.treat ? sim : SimParams(
         n0 = sim.n0,
         t0 = sim.t0,
@@ -52,10 +67,11 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
         treat_offs = sim.treat_offs,
         save_at = sim.save_at,
         treat = treat,
-        N_trans_switch = sim.N_trans_switch
+        Aswitch = sim.Aswitch
     )
 
     params = model.params
+    independent = params.transition_coupling === :independent_rate
     de = params.drug_effect
 
     if de == :b
@@ -72,12 +88,6 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
     u0 = to_componentarray(state)
     tspan = (sim_eff.t0, sim_eff.tmax)
 
-    rate_modifier = select_drug_effect(de,
-        apply_drug_effect_death,
-        apply_drug_effect_birth,
-        apply_drug_effect_combined
-    )
-
     normalize_t_pass(times) = begin
         if times isa AbstractVector
             Vector{Float64}(times)
@@ -93,7 +103,7 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
     # Helper builders are grouped here to keep repeated rate/callback logic centralized.
 
     # Build birth/death rate closures for a phenotype and drug mode.
-    function build_birth_death_rates(de, idx, b_ref, d_ref, b_sym::Symbol, d_sym::Symbol; psi_fn = p -> 0.0)
+    function build_birth_death_rates(de, idx, b_ref, d_ref, ::Val{B}, ::Val{D}; psi_fn = p -> 0.0) where {B,D}
         safe_ratio(num, den) = abs(den) > eps(Float64) ? (num / den) : 0.0
 
         function logistic_scale(u)
@@ -102,36 +112,36 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
         end
 
         function birth_drug_adjustment(u, p)
-            return (safe_ratio(getproperty(p, b_sym), b_ref) * p.Dc * u[RESPOP_GAM_INDEX] * (1 - psi_fn(p)))
+            return (safe_ratio(getproperty(p, B), b_ref) * p.Dc * clamp(u[RESPOP_GAM_INDEX], 0.0, 1.0) * (1 - psi_fn(p)))
         end
 
         function death_drug_adjustment(u, p)
-            return (safe_ratio(getproperty(p, d_sym), d_ref) * p.Dc * u[RESPOP_GAM_INDEX] * (1 - psi_fn(p)))
+            return (safe_ratio(getproperty(p, D), d_ref) * p.Dc * clamp(u[RESPOP_GAM_INDEX], 0.0, 1.0) * (1 - psi_fn(p)))
         end
 
         function birth_d(u, p, t)
-            return (u[idx] * getproperty(p, b_sym)) * logistic_scale(u)
+            return (max(u[idx], 0.0) * getproperty(p, B)) * logistic_scale(u)
         end
 
         function death_d(u, p, t)
             drug_interaction = death_drug_adjustment(u, p)
-            return (u[idx] * (getproperty(p, d_sym) + drug_interaction)) * logistic_scale(u)
+            return (max(u[idx], 0.0) * (getproperty(p, D) + drug_interaction)) * logistic_scale(u)
         end
 
         function birth_b(u, p, t)
             drug_interaction = birth_drug_adjustment(u, p)
-            return (u[idx] * (getproperty(p, b_sym) - drug_interaction)) * logistic_scale(u)
+            return (max(u[idx], 0.0) * (getproperty(p, B) - drug_interaction)) * logistic_scale(u)
         end
 
         function death_b(u, p, t)
-            return (u[idx] * getproperty(p, d_sym)) * logistic_scale(u)
+            return (max(u[idx], 0.0) * getproperty(p, D)) * logistic_scale(u)
         end
 
         function birth_c(u, p, t)
             drug_interaction = birth_drug_adjustment(u, p)
-            b_drug = getproperty(p, b_sym) - drug_interaction
+            b_drug = getproperty(p, B) - drug_interaction
             if b_drug >= 0.0
-                return (u[idx] * b_drug) * logistic_scale(u)
+                return (max(u[idx], 0.0) * b_drug) * logistic_scale(u)
             else
                 return 0.0
             end
@@ -139,12 +149,12 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
 
         function death_c(u, p, t)
             drug_interaction = birth_drug_adjustment(u, p)
-            b_drug = getproperty(p, b_sym) - drug_interaction
+            b_drug = getproperty(p, B) - drug_interaction
             if b_drug >= 0.0
-                return (u[idx] * getproperty(p, d_sym)) * logistic_scale(u)
+                return (max(u[idx], 0.0) * getproperty(p, D)) * logistic_scale(u)
             else
                 negative_surplus = abs(b_drug)
-                return (u[idx] * (getproperty(p, d_sym) + negative_surplus)) * logistic_scale(u)
+                return (max(u[idx], 0.0) * (getproperty(p, D) + negative_surplus)) * logistic_scale(u)
             end
         end
 
@@ -153,267 +163,335 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
         return birth, death
     end
 
-    # Build a switching-rate closure for a phenotype and drug mode.
-    function build_switch_rate(de, idx, b_total_fn, rate_fn; gamma_factor = false, psi_fn = p -> 0.0)
-        function logistic_scale(u)
-            N = respop_total_population(u)
-            return max(logistic_factor(N, sim_eff.Cc), 0.0)
-        end
+    S_division_activity, S_death_activity = build_birth_death_rates(
+        de, RESPOP_NS_INDEX, bS, dS, Val(:bS), Val(:dS))
+    R_division_activity, R_death_activity = build_birth_death_rates(
+        de, RESPOP_NR_INDEX, bR, dR, Val(:bR), Val(:dR); psi_fn = p -> p.psi)
+    E_symmetric_birth_activity, E_death_activity = build_birth_death_rates(
+        de, RESPOP_NE_INDEX, bE, dE, Val(:bE), Val(:dE); psi_fn = p -> p.psi)
 
-        function rate_d(u, p, t)
-            base = u[idx] * rate_fn(p) * b_total_fn(p)
-            if gamma_factor
-                base *= u[RESPOP_GAM_INDEX]
-            end
-            return base * logistic_scale(u)
-        end
+    S_symmetric_birth_activity(u, p, t) = S_division_activity(u, p, t) * (independent ? 1.0 : 1 - p.mu)
+    S_asymmetric_R_birth_activity(u, p, t) = S_division_activity(u, p, t) * p.mu
+    R_symmetric_birth_activity(u, p, t) = R_division_activity(u, p, t) *
+        (independent ? 1.0 : max(1 - p.sig - p.al * clamp(u[RESPOP_GAM_INDEX], 0.0, 1.0), 0.0))
+    R_asymmetric_S_birth_activity(u, p, t) = R_division_activity(u, p, t) * p.sig
+    R_asymmetric_E_birth_activity(u, p, t) = R_division_activity(u, p, t) *
+        p.al * clamp(u[RESPOP_GAM_INDEX], 0.0, 1.0)
 
-        function rate_b(u, p, t)
-            b_total = b_total_fn(p)
-            drug_interaction = (b_total * p.Dc * u[RESPOP_GAM_INDEX] * (1 - psi_fn(p)))
-            b_drug = b_total - drug_interaction
-            base = u[idx] * b_drug * rate_fn(p)
-            if gamma_factor
-                base *= u[RESPOP_GAM_INDEX]
-            end
-            return base * logistic_scale(u)
-        end
+    S_to_R_transition_activity(u, p, t) = max(u[RESPOP_NS_INDEX], 0.0) * p.mu
+    R_to_S_transition_activity(u, p, t) = max(u[RESPOP_NR_INDEX], 0.0) * p.sig
+    R_to_E_transition_activity(u, p, t) = max(u[RESPOP_NR_INDEX], 0.0) * p.al * clamp(u[RESPOP_GAM_INDEX], 0.0, 1.0)
 
-        function rate_c(u, p, t)
-            b_total = b_total_fn(p)
-            drug_interaction = (b_total * p.Dc * u[RESPOP_GAM_INDEX] * (1 - psi_fn(p)))
-            b_drug = b_total - drug_interaction
-            if b_drug >= 0.0
-                base = u[idx] * b_drug * rate_fn(p)
-                if gamma_factor
-                    base *= u[RESPOP_GAM_INDEX]
-                end
-                return base * logistic_scale(u)
-            else
-                return 0.0
-            end
-        end
-
-        return select_drug_effect(de, rate_d, rate_b, rate_c)
-    end
-
-    # ODE system for deterministic dynamics (mutates `du` in-place).
+    # ODE equations remain explicit by phenotype; each term is a complete event.
     function ode_fxn!(du, u, p, t)
-        @unpack kp, psi, mu_o, sig_o, al_o = p
-        @unpack gam, nS, nR, nE = u
-
-        N = nS + nR + nE
-
-        bS_o_mod, dS_o_mod = rate_modifier(bS, dS, p.bS_o, p.dS_o, p.Dc, gam, N, sim_eff.Cc, 0.0)
-        bR_o_mod, dR_o_mod = rate_modifier(bR, dR, p.bR_o, p.dR_o, p.Dc, gam, N, sim_eff.Cc, psi)
-        bE_o_mod, dE_o_mod = rate_modifier(bE, dE, p.bE_o, p.dE_o, p.Dc, gam, N, sim_eff.Cc, psi)
-
-        du.gam = kp
-        du.nS = (bS_o_mod - dS_o_mod) * nS -
-            mu_o * nS * bS_o_mod +
-            sig_o * nR * bR_o_mod
-        du.nR = (bR_o_mod - dR_o_mod) * nR +
-            mu_o * nS * bS_o_mod -
-            sig_o * nR * bR_o_mod -
-            al_o * gam * nR * bR_o_mod
-        du.nE = (bE_o_mod - dE_o_mod) * nE +
-                al_o * gam * nR * bR_o_mod
+        du.gam = p.kp
+        if independent
+            du.nS = (p.S_symmetric_birth_ode * S_symmetric_birth_activity(u, p, t)
+                - p.S_death_ode * S_death_activity(u, p, t)
+                - p.S_to_R_transition_ode * S_to_R_transition_activity(u, p, t)
+                + p.R_to_S_transition_ode * R_to_S_transition_activity(u, p, t))
+            du.nR = (p.R_symmetric_birth_ode * R_symmetric_birth_activity(u, p, t)
+                - p.R_death_ode * R_death_activity(u, p, t)
+                + p.S_to_R_transition_ode * S_to_R_transition_activity(u, p, t)
+                - p.R_to_S_transition_ode * R_to_S_transition_activity(u, p, t)
+                - p.R_to_E_transition_ode * R_to_E_transition_activity(u, p, t))
+            du.nE = (p.E_symmetric_birth_ode * E_symmetric_birth_activity(u, p, t)
+                - p.E_death_ode * E_death_activity(u, p, t)
+                + p.R_to_E_transition_ode * R_to_E_transition_activity(u, p, t))
+        else
+            du.nS = (p.S_symmetric_birth_ode * S_symmetric_birth_activity(u, p, t)
+                - p.S_death_ode * S_death_activity(u, p, t)
+                + p.R_asymmetric_S_birth_ode * R_asymmetric_S_birth_activity(u, p, t))
+            du.nR = (p.S_asymmetric_R_birth_ode * S_asymmetric_R_birth_activity(u, p, t)
+                + p.R_symmetric_birth_ode * R_symmetric_birth_activity(u, p, t)
+                - p.R_death_ode * R_death_activity(u, p, t))
+            du.nE = (p.R_asymmetric_E_birth_ode * R_asymmetric_E_birth_activity(u, p, t)
+                + p.E_symmetric_birth_ode * E_symmetric_birth_activity(u, p, t)
+                - p.E_death_ode * E_death_activity(u, p, t))
+        end
+        du.Pass_num = 0.0
+        return nothing
     end
 
     prob = ODEProblem(ode_fxn!, u0, tspan, p)
 
     ################################
-    # Jump Problem Birth-Death Jumps
+    # Jump Problem: Division Outcomes, Death, Damage and Repair
     ################################
 
-    # Sensitive
-    # Event handlers (mutate integrator state)
-    function S_birth!(integrator)
+    function S_symmetric_birth!(integrator)
+        integrator.u[RESPOP_NS_INDEX] > 0.0 || return nothing
         integrator.u[RESPOP_NS_INDEX] += 1
-        nothing
+        refresh_integrator!(integrator; modified = true)
+        return nothing
     end
+
+    function S_symmetric_birth_rate(u, p, t)
+        p.S_symmetric_birth_ode == 0.0 || return 0.0
+        u[RESPOP_NS_INDEX] > 0.0 || return 0.0
+        return S_symmetric_birth_activity(u, p, t)
+    end
+    S_symmetric_birth_jump = VariableRateJump(S_symmetric_birth_rate, S_symmetric_birth!)
 
     function S_death!(integrator)
+        integrator.u[RESPOP_NS_INDEX] >= 1.0 || return nothing
         integrator.u[RESPOP_NS_INDEX] -= 1
-        nothing
+        refresh_integrator!(integrator; modified = true)
+        return nothing
     end
 
-    Sb_rate, Sd_rate = build_birth_death_rates(de, RESPOP_NS_INDEX, bS, dS, :bS_j, :dS_j)
+    function S_death_rate(u, p, t)
+        p.S_death_ode == 0.0 || return 0.0
+        u[RESPOP_NS_INDEX] >= 1.0 || return 0.0
+        return S_death_activity(u, p, t)
+    end
+    S_death_jump = VariableRateJump(S_death_rate, S_death!)
 
-    Sb_jump = VariableRateJump(Sb_rate, S_birth!)
-    Sd_jump = VariableRateJump(Sd_rate, S_death!)
-
-    # Resistant
-    function R_birth!(integrator)
+    function R_symmetric_birth!(integrator)
+        integrator.u[RESPOP_NR_INDEX] > 0.0 || return nothing
         integrator.u[RESPOP_NR_INDEX] += 1
-        nothing
+        refresh_integrator!(integrator; modified = true)
+        return nothing
     end
+
+    function R_symmetric_birth_rate(u, p, t)
+        p.R_symmetric_birth_ode == 0.0 || return 0.0
+        u[RESPOP_NR_INDEX] > 0.0 || return 0.0
+        return R_symmetric_birth_activity(u, p, t)
+    end
+    R_symmetric_birth_jump = VariableRateJump(R_symmetric_birth_rate, R_symmetric_birth!)
 
     function R_death!(integrator)
+        integrator.u[RESPOP_NR_INDEX] >= 1.0 || return nothing
         integrator.u[RESPOP_NR_INDEX] -= 1
-        nothing
+        refresh_integrator!(integrator; modified = true)
+        return nothing
     end
 
-    Rb_rate, Rd_rate = build_birth_death_rates(de, RESPOP_NR_INDEX, bR, dR, :bR_j, :dR_j; psi_fn = p -> p.psi)
+    function R_death_rate(u, p, t)
+        p.R_death_ode == 0.0 || return 0.0
+        u[RESPOP_NR_INDEX] >= 1.0 || return 0.0
+        return R_death_activity(u, p, t)
+    end
+    R_death_jump = VariableRateJump(R_death_rate, R_death!)
 
-    Rb_jump = VariableRateJump(Rb_rate, R_birth!)
-    Rd_jump = VariableRateJump(Rd_rate, R_death!)
-
-    # Escape
-    function E_birth!(integrator)
+    function E_symmetric_birth!(integrator)
+        integrator.u[RESPOP_NE_INDEX] > 0.0 || return nothing
         integrator.u[RESPOP_NE_INDEX] += 1
-        nothing
+        refresh_integrator!(integrator; modified = true)
+        return nothing
     end
+
+    function E_symmetric_birth_rate(u, p, t)
+        p.E_symmetric_birth_ode == 0.0 || return 0.0
+        u[RESPOP_NE_INDEX] > 0.0 || return 0.0
+        return E_symmetric_birth_activity(u, p, t)
+    end
+    E_symmetric_birth_jump = VariableRateJump(E_symmetric_birth_rate, E_symmetric_birth!)
 
     function E_death!(integrator)
+        integrator.u[RESPOP_NE_INDEX] >= 1.0 || return nothing
         integrator.u[RESPOP_NE_INDEX] -= 1
-        nothing
+        refresh_integrator!(integrator; modified = true)
+        return nothing
     end
 
-    Eb_rate, Ed_rate = build_birth_death_rates(de, RESPOP_NE_INDEX, bE, dE, :bE_j, :dE_j; psi_fn = p -> p.psi)
+    function E_death_rate(u, p, t)
+        p.E_death_ode == 0.0 || return 0.0
+        u[RESPOP_NE_INDEX] >= 1.0 || return 0.0
+        return E_death_activity(u, p, t)
+    end
+    E_death_jump = VariableRateJump(E_death_rate, E_death!)
 
-    Eb_jump = VariableRateJump(Eb_rate, E_birth!)
-    Ed_jump = VariableRateJump(Ed_rate, E_death!)
+    # Asymmetric daughter births.
 
-    ########################################
-    # Jump Problem Phenotype Switching Jumps
-    ########################################
-
-    # Sensitive -> Resistant
-    function StoR_switch!(integrator)
-        integrator.u[RESPOP_NS_INDEX] = integrator.u[RESPOP_NS_INDEX] - 1
-        integrator.u[RESPOP_NR_INDEX] = integrator.u[RESPOP_NR_INDEX] + 1
-        nothing
+    function S_asymmetric_R_birth!(integrator)
+        integrator.u[RESPOP_NS_INDEX] > 0.0 || return nothing
+        integrator.u[RESPOP_NR_INDEX] += 1
+        refresh_integrator!(integrator; modified = true)
+        return nothing
     end
 
-    StoR_switch_rate = build_switch_rate(de, RESPOP_NS_INDEX, p -> (p.bS_o + p.bS_j), p -> p.mu_j)
-    StoR_switch_jump = VariableRateJump(StoR_switch_rate, StoR_switch!)
-
-    # Resistant -> Sensitive
-    function RtoS_switch!(integrator)
-        integrator.u[RESPOP_NR_INDEX] = integrator.u[RESPOP_NR_INDEX] - 1
-        integrator.u[RESPOP_NS_INDEX] = integrator.u[RESPOP_NS_INDEX] + 1
-        nothing
+    function S_asymmetric_R_birth_rate(u, p, t)
+        p.S_asymmetric_R_birth_ode == 0.0 || return 0.0
+        u[RESPOP_NS_INDEX] > 0.0 || return 0.0
+        return S_asymmetric_R_birth_activity(u, p, t)
+    end
+    function S_to_R_transition!(integrator)
+        integrator.u[RESPOP_NS_INDEX] >= 1.0 || return nothing
+        integrator.u[RESPOP_NS_INDEX] -= 1
+        integrator.u[RESPOP_NR_INDEX] += 1
+        refresh_integrator!(integrator; modified = true)
+        return nothing
     end
 
-    RtoS_switch_rate = build_switch_rate(de, RESPOP_NR_INDEX, p -> (p.bR_o + p.bR_j), p -> p.sig_j; psi_fn = p -> p.psi)
-    RtoS_switch_jump = VariableRateJump(RtoS_switch_rate, RtoS_switch!)
+    function S_to_R_transition_rate(u, p, t)
+        p.S_to_R_transition_ode == 0.0 || return 0.0
+        u[RESPOP_NS_INDEX] >= 1.0 || return 0.0
+        return S_to_R_transition_activity(u, p, t)
+    end
+    S_to_R_transition_jump = independent ? VariableRateJump(S_to_R_transition_rate, S_to_R_transition!) : nothing
+    S_asymmetric_R_birth_jump = independent ? nothing : VariableRateJump(S_asymmetric_R_birth_rate, S_asymmetric_R_birth!)
 
-    # Resistant -> Escape
-    function RtoE_switch!(integrator)
-        integrator.u[RESPOP_NR_INDEX] = integrator.u[RESPOP_NR_INDEX] - 1
-        integrator.u[RESPOP_NE_INDEX] = integrator.u[RESPOP_NE_INDEX] + 1
-        nothing
+    function R_asymmetric_S_birth!(integrator)
+        integrator.u[RESPOP_NR_INDEX] > 0.0 || return nothing
+        integrator.u[RESPOP_NS_INDEX] += 1
+        refresh_integrator!(integrator; modified = true)
+        return nothing
     end
 
-    RtoE_switch_rate = build_switch_rate(de, RESPOP_NR_INDEX, p -> (p.bR_o + p.bR_j), p -> p.al_j;
-                                         gamma_factor = true, psi_fn = p -> p.psi)
-    RtoE_switch_jump = VariableRateJump(RtoE_switch_rate, RtoE_switch!)
+    function R_asymmetric_S_birth_rate(u, p, t)
+        p.R_asymmetric_S_birth_ode == 0.0 || return 0.0
+        u[RESPOP_NR_INDEX] > 0.0 || return 0.0
+        return R_asymmetric_S_birth_activity(u, p, t)
+    end
+    function R_to_S_transition!(integrator)
+        integrator.u[RESPOP_NR_INDEX] >= 1.0 || return nothing
+        integrator.u[RESPOP_NR_INDEX] -= 1
+        integrator.u[RESPOP_NS_INDEX] += 1
+        refresh_integrator!(integrator; modified = true)
+        return nothing
+    end
+
+    function R_to_S_transition_rate(u, p, t)
+        p.R_to_S_transition_ode == 0.0 || return 0.0
+        u[RESPOP_NR_INDEX] >= 1.0 || return 0.0
+        return R_to_S_transition_activity(u, p, t)
+    end
+    R_to_S_transition_jump = independent ? VariableRateJump(R_to_S_transition_rate, R_to_S_transition!) : nothing
+    R_asymmetric_S_birth_jump = independent ? nothing : VariableRateJump(R_asymmetric_S_birth_rate, R_asymmetric_S_birth!)
+
+    function R_asymmetric_E_birth!(integrator)
+        integrator.u[RESPOP_NR_INDEX] > 0.0 || return nothing
+        integrator.u[RESPOP_NE_INDEX] += 1
+        refresh_integrator!(integrator; modified = true)
+        return nothing
+    end
+
+    function R_asymmetric_E_birth_rate(u, p, t)
+        p.R_asymmetric_E_birth_ode == 0.0 || return 0.0
+        u[RESPOP_NR_INDEX] > 0.0 || return 0.0
+        return R_asymmetric_E_birth_activity(u, p, t)
+    end
+    function R_to_E_transition!(integrator)
+        integrator.u[RESPOP_NR_INDEX] >= 1.0 || return nothing
+        integrator.u[RESPOP_NR_INDEX] -= 1
+        integrator.u[RESPOP_NE_INDEX] += 1
+        refresh_integrator!(integrator; modified = true)
+        return nothing
+    end
+
+    function R_to_E_transition_rate(u, p, t)
+        p.R_to_E_transition_ode == 0.0 || return 0.0
+        u[RESPOP_NR_INDEX] >= 1.0 || return 0.0
+        return R_to_E_transition_activity(u, p, t)
+    end
+    R_to_E_transition_jump = independent ? VariableRateJump(R_to_E_transition_rate, R_to_E_transition!) : nothing
+    R_asymmetric_E_birth_jump = independent ? nothing : VariableRateJump(R_asymmetric_E_birth_rate, R_asymmetric_E_birth!)
 
     ###########
     # Callbacks
     ###########
 
-    mu = params.mu
-    sig = params.sig
-    al = params.al
     n0 = sim_eff.n0
 
-    # ODE/jump toggle callbacks for phenotype birth/death rates.
-    function build_bd_toggle_callbacks(idx, b_o_sym, b_j_sym, d_o_sym, d_j_sym, Nswitch)
-        cond_to_ode(u, t, integrator) = integrator.u[idx] >= Nswitch
-        function switch_to_ode!(integrator)
-            if getproperty(integrator.p, b_o_sym) == 0.0
-                setproperty!(integrator.p, b_o_sym, deepcopy(getproperty(integrator.p, b_j_sym)))
-                setproperty!(integrator.p, b_j_sym, 0.0)
-            end
-            if getproperty(integrator.p, d_o_sym) == 0.0
-                setproperty!(integrator.p, d_o_sym, deepcopy(getproperty(integrator.p, d_j_sym)))
-                setproperty!(integrator.p, d_j_sym, 0.0)
-            end
-            nothing
-        end
-        cb1 = DiscreteCallback(cond_to_ode, switch_to_ode!,
-                               save_positions = (false, true))
+    # Decide each complete event from its source and full biological activity.
+    event_flags = independent ? (
+            :S_symmetric_birth_ode, :S_to_R_transition_ode, :S_death_ode,
+            :R_symmetric_birth_ode, :R_to_S_transition_ode, :R_to_E_transition_ode,
+            :R_death_ode, :E_symmetric_birth_ode, :E_death_ode
+        ) : (
+            :S_symmetric_birth_ode, :S_asymmetric_R_birth_ode, :S_death_ode,
+            :R_symmetric_birth_ode, :R_asymmetric_S_birth_ode, :R_asymmetric_E_birth_ode,
+            :R_death_ode, :E_symmetric_birth_ode, :E_death_ode
+        )
 
-        cond_to_jump(u, t, integrator) = integrator.u[idx] < Nswitch
-        function switch_to_jump!(integrator)
-            integrator.u[idx] = round(integrator.u[idx])
-            if getproperty(integrator.p, b_j_sym) == 0.0
-                setproperty!(integrator.p, b_j_sym, deepcopy(getproperty(integrator.p, b_o_sym)))
-                setproperty!(integrator.p, b_o_sym, 0.0)
-            end
-            if getproperty(integrator.p, d_j_sym) == 0.0
-                setproperty!(integrator.p, d_j_sym, deepcopy(getproperty(integrator.p, d_o_sym)))
-                setproperty!(integrator.p, d_o_sym, 0.0)
-            end
-            nothing
+    function classify_event_modes!(u, p, t)
+        previous = Tuple(getproperty(p, name) for name in event_flags)
+        p.S_symmetric_birth_ode = u[RESPOP_NS_INDEX] >= sim_eff.Nswitch &&
+            S_symmetric_birth_activity(u, p, t) >= sim_eff.Aswitch
+        if independent
+            p.S_to_R_transition_ode = u[RESPOP_NS_INDEX] >= sim_eff.Nswitch &&
+                S_to_R_transition_activity(u, p, t) >= sim_eff.Aswitch
+        else
+            p.S_asymmetric_R_birth_ode = u[RESPOP_NS_INDEX] >= sim_eff.Nswitch &&
+                S_asymmetric_R_birth_activity(u, p, t) >= sim_eff.Aswitch
         end
-        cb2 = DiscreteCallback(cond_to_jump, switch_to_jump!,
-                               save_positions = (false, true))
-
-        return cb1, cb2
+        p.S_death_ode = u[RESPOP_NS_INDEX] >= sim_eff.Nswitch &&
+            S_death_activity(u, p, t) >= sim_eff.Aswitch
+        p.R_symmetric_birth_ode = u[RESPOP_NR_INDEX] >= sim_eff.Nswitch &&
+            R_symmetric_birth_activity(u, p, t) >= sim_eff.Aswitch
+        if independent
+            p.R_to_S_transition_ode = u[RESPOP_NR_INDEX] >= sim_eff.Nswitch &&
+                R_to_S_transition_activity(u, p, t) >= sim_eff.Aswitch
+        else
+            p.R_asymmetric_S_birth_ode = u[RESPOP_NR_INDEX] >= sim_eff.Nswitch &&
+                R_asymmetric_S_birth_activity(u, p, t) >= sim_eff.Aswitch
+        end
+        if independent
+            p.R_to_E_transition_ode = u[RESPOP_NR_INDEX] >= sim_eff.Nswitch &&
+                R_to_E_transition_activity(u, p, t) >= sim_eff.Aswitch
+        else
+            p.R_asymmetric_E_birth_ode = u[RESPOP_NR_INDEX] >= sim_eff.Nswitch &&
+                R_asymmetric_E_birth_activity(u, p, t) >= sim_eff.Aswitch
+        end
+        p.R_death_ode = u[RESPOP_NR_INDEX] >= sim_eff.Nswitch &&
+            R_death_activity(u, p, t) >= sim_eff.Aswitch
+        p.E_symmetric_birth_ode = u[RESPOP_NE_INDEX] >= sim_eff.Nswitch &&
+            E_symmetric_birth_activity(u, p, t) >= sim_eff.Aswitch
+        p.E_death_ode = u[RESPOP_NE_INDEX] >= sim_eff.Nswitch &&
+            E_death_activity(u, p, t) >= sim_eff.Aswitch
+        return previous != Tuple(getproperty(p, name) for name in event_flags)
     end
 
-    # ODE/jump toggle callbacks for switch rates.
-    function build_rate_toggle_callbacks(idx, rate_value, rate_o_sym, rate_j_sym, N_trans_switch;
-                                         activity_fn = integrator -> (integrator.u[idx] * rate_value))
-        cond_to_ode(u, t, integrator) = activity_fn(integrator) >= N_trans_switch
-        function switch_to_ode!(integrator)
-            if getproperty(integrator.p, rate_o_sym) == 0.0
-                setproperty!(integrator.p, rate_o_sym, deepcopy(getproperty(integrator.p, rate_j_sym)))
-                setproperty!(integrator.p, rate_j_sym, 0.0)
-            end
-            nothing
+    function refresh_event_modes!(u, p, t)
+        changed = classify_event_modes!(u, p, t)
+        # Evaluate all eligibility before changing any count; net drift is not sufficient.
+        NS_has_ode = (p.S_symmetric_birth_ode == 1.0 && S_symmetric_birth_activity(u, p, t) > 0.0) ||
+            (p.S_death_ode == 1.0 && S_death_activity(u, p, t) > 0.0)
+        NR_has_ode = (p.R_symmetric_birth_ode == 1.0 && R_symmetric_birth_activity(u, p, t) > 0.0) ||
+            (p.R_death_ode == 1.0 && R_death_activity(u, p, t) > 0.0)
+        NE_has_ode = (p.E_symmetric_birth_ode == 1.0 && E_symmetric_birth_activity(u, p, t) > 0.0) ||
+            (p.E_death_ode == 1.0 && E_death_activity(u, p, t) > 0.0)
+        if independent
+            S_to_R_transition_active = p.S_to_R_transition_ode == 1.0 && S_to_R_transition_activity(u, p, t) > 0.0
+            R_to_S_transition_active = p.R_to_S_transition_ode == 1.0 && R_to_S_transition_activity(u, p, t) > 0.0
+            R_to_E_transition_active = p.R_to_E_transition_ode == 1.0 && R_to_E_transition_activity(u, p, t) > 0.0
+            NS_has_ode |= S_to_R_transition_active || R_to_S_transition_active
+            NR_has_ode |= S_to_R_transition_active || R_to_S_transition_active || R_to_E_transition_active
+            NE_has_ode |= R_to_E_transition_active
+        else
+            NS_has_ode |= p.R_asymmetric_S_birth_ode == 1.0 && R_asymmetric_S_birth_activity(u, p, t) > 0.0
+            NR_has_ode |= p.S_asymmetric_R_birth_ode == 1.0 && S_asymmetric_R_birth_activity(u, p, t) > 0.0
+            NE_has_ode |= p.R_asymmetric_E_birth_ode == 1.0 && R_asymmetric_E_birth_activity(u, p, t) > 0.0
         end
-        cb1 = DiscreteCallback(cond_to_ode, switch_to_ode!,
-                               save_positions = (false, true))
-
-        cond_to_jump(u, t, integrator) = activity_fn(integrator) < N_trans_switch
-        function switch_to_jump!(integrator)
-            if getproperty(integrator.p, rate_j_sym) == 0.0
-                setproperty!(integrator.p, rate_j_sym, deepcopy(getproperty(integrator.p, rate_o_sym)))
-                setproperty!(integrator.p, rate_o_sym, 0.0)
-            end
-            nothing
+        projected = false
+        if !NS_has_ode && 0.0 <= u[RESPOP_NS_INDEX] < sim_eff.Nswitch && !isinteger(u[RESPOP_NS_INDEX])
+            lower = floor(u[RESPOP_NS_INDEX])
+            u[RESPOP_NS_INDEX] = lower + (rand(rng) < u[RESPOP_NS_INDEX] - lower ? 1.0 : 0.0)
+            projected = true
         end
-        cb2 = DiscreteCallback(cond_to_jump, switch_to_jump!,
-                               save_positions = (false, true))
-
-        return cb1, cb2
+        if !NR_has_ode && 0.0 <= u[RESPOP_NR_INDEX] < sim_eff.Nswitch && !isinteger(u[RESPOP_NR_INDEX])
+            lower = floor(u[RESPOP_NR_INDEX])
+            u[RESPOP_NR_INDEX] = lower + (rand(rng) < u[RESPOP_NR_INDEX] - lower ? 1.0 : 0.0)
+            projected = true
+        end
+        if !NE_has_ode && 0.0 <= u[RESPOP_NE_INDEX] < sim_eff.Nswitch && !isinteger(u[RESPOP_NE_INDEX])
+            lower = floor(u[RESPOP_NE_INDEX])
+            u[RESPOP_NE_INDEX] = lower + (rand(rng) < u[RESPOP_NE_INDEX] - lower ? 1.0 : 0.0)
+            projected = true
+        end
+        projected && classify_event_modes!(u, p, t)
+        return changed || projected
     end
 
-    # Build a proxy for switch activity to improve ODE/jump handoff fidelity.
-    function build_switch_activity_proxy(de, idx, b_total_fn, rate_value;
-                                         gamma_factor = false, psi_fn = p -> 0.0)
-        function proxy(integrator)
-            u = integrator.u
-            p = integrator.p
-
-            N = respop_total_population(u)
-            logistic = max(logistic_factor(N, sim_eff.Cc), 0.0)
-
-            b_total = b_total_fn(p)
-            drug_interaction = b_total * p.Dc * u[RESPOP_GAM_INDEX] * (1 - psi_fn(p))
-            b_drug = b_total - drug_interaction
-
-            b_effective = if de === :d
-                b_total
-            elseif de === :b
-                b_drug
-            else
-                max(b_drug, 0.0)
-            end
-
-            activity = u[idx] * rate_value * b_effective
-            if gamma_factor
-                activity *= u[RESPOP_GAM_INDEX]
-            end
-
-            return activity * logistic
+    function refresh_integrator!(integrator; modified = false)
+        changed = refresh_event_modes!(integrator.u, integrator.p, integrator.t)
+        if changed || modified
+            u_modified!(integrator, true)
+            reset_aggregated_jumps!(integrator; update_jump_params = false)
         end
-
-        return proxy
+        return nothing
     end
 
     # Resample populations for a passage bottleneck (mutates state; uses RNG).
@@ -442,6 +520,7 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
 
         resample_passage_bottleneck!(integrator, n0)
         integrator.u[RESPOP_PASS_INDEX] += 1
+        refresh_integrator!(integrator; modified = true)
         return true
     end
 
@@ -450,80 +529,24 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
         condition(u, t, integrator) = u[idx] < 0
         function affect!(integrator)
             integrator.u[idx] = 0.0
+            refresh_integrator!(integrator; modified = true)
         end
         return DiscreteCallback(condition, affect!,
                                 save_positions = (false, true))
     end
 
-    # Sensitive
-    S_cb_switch1, S_cb_switch2 = build_bd_toggle_callbacks(
-        RESPOP_NS_INDEX, :bS_o, :bS_j, :dS_o, :dS_j, sim_eff.Nswitch
-    )
-
-    # Resistant
-    R_cb_switch1, R_cb_switch2 = build_bd_toggle_callbacks(
-        RESPOP_NR_INDEX, :bR_o, :bR_j, :dR_o, :dR_j, sim_eff.Nswitch
-    )
-
-    # Escape
-    E_cb_switch1, E_cb_switch2 = build_bd_toggle_callbacks(
-        RESPOP_NE_INDEX, :bE_o, :bE_j, :dE_o, :dE_j, sim_eff.Nswitch
-    )
-
-    # Sensitive -> Resistant
-    StoR_activity_proxy = build_switch_activity_proxy(
-        de, RESPOP_NS_INDEX, p -> (p.bS_o + p.bS_j), mu
-    )
-
-    StoR_cb_switch1, StoR_cb_switch2 = build_rate_toggle_callbacks(
-        RESPOP_NS_INDEX, mu, :mu_o, :mu_j, sim_eff.N_trans_switch;
-        activity_fn = StoR_activity_proxy
-    )
-
-    # Resistant -> Sensitive
-    RtoS_activity_proxy = build_switch_activity_proxy(
-        de, RESPOP_NR_INDEX, p -> (p.bR_o + p.bR_j), sig;
-        psi_fn = p -> p.psi
-    )
-
-    RtoS_cb_switch1, RtoS_cb_switch2 = build_rate_toggle_callbacks(
-        RESPOP_NR_INDEX, sig, :sig_o, :sig_j, sim_eff.N_trans_switch;
-        activity_fn = RtoS_activity_proxy
-    )
-
-    # Resistant -> Escape
-    RtoE_activity_proxy = function (integrator)
-
-        N = respop_total_population(integrator.u)
-        b_total = integrator.p.bR_o + integrator.p.bR_j
-        gamma = integrator.u[RESPOP_GAM_INDEX]
-        psi = integrator.p.psi
-        drug_interaction = b_total * integrator.p.Dc * gamma * (1 - psi)
-        b_drug = b_total - drug_interaction
-
-        b_effective = if de === :d
-            b_total
-        elseif de === :b
-            b_drug
-        else
-            max(b_drug, 0.0)
-        end
-
-        return integrator.u[RESPOP_NR_INDEX] * al * b_effective * gamma * logistic_factor(N, sim_eff.Cc)
-    end
-
-    RtoE_cb_switch1, RtoE_cb_switch2 = build_rate_toggle_callbacks(
-        RESPOP_NR_INDEX, al, :al_o, :al_j, sim_eff.N_trans_switch;
-        activity_fn = RtoE_activity_proxy
-    )
+    event_mode_cb = DiscreteCallback((u, t, integrator) -> true,
+        integrator -> refresh_integrator!(integrator); save_positions = (false, false))
 
     # Treatment schedule callbacks (use preset times for robustness).
     function set_treatment_on!(integrator)
         integrator.p.kp = params.k
+        refresh_integrator!(integrator; modified = true)
     end
 
     function set_treatment_off!(integrator)
         integrator.p.kp = -params.k
+        refresh_integrator!(integrator; modified = true)
     end
 
     filter_times_in_span(times) = sort(unique(filter(t -> (t >= sim_eff.t0 && t <= sim_eff.tmax), times)))
@@ -541,12 +564,14 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
     function clamp_gam_max!(integrator)
         integrator.u[RESPOP_GAM_INDEX] = 1.0
         integrator.p.kp = 0.0
+        refresh_integrator!(integrator; modified = true)
     end
 
     gam_below_min(u, t, integrator) = (u[RESPOP_GAM_INDEX])
     function clamp_gam_min!(integrator)
         integrator.u[RESPOP_GAM_INDEX] = 0.0
         integrator.p.kp = 0.0
+        refresh_integrator!(integrator; modified = true)
     end
 
     gam_max_cb = ContinuousCallback(gam_above_max, clamp_gam_max!,
@@ -594,13 +619,7 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
 
     # Collect Callbacks
     cb_list = Any[
-        S_cb_switch1, S_cb_switch2,
-        R_cb_switch1, R_cb_switch2,
-        E_cb_switch1, E_cb_switch2,
-        StoR_cb_switch1, StoR_cb_switch2,
-        RtoS_cb_switch1, RtoS_cb_switch2,
-        RtoE_cb_switch1, RtoE_cb_switch2,
-        nmax_cb, extinction_cb,
+        event_mode_cb, nmax_cb, extinction_cb,
         cb7a, cb7b, cb7c
     ]
 
@@ -618,25 +637,55 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
         push!(cb_list, gam_max_cb, gam_min_cb)
     end
 
+    refresh_event_modes!(u0, p, sim_eff.t0)
+    if _setup_only
+        # Internal test access to these model-local scientific definitions.
+        return (p = p, u0 = u0, ode! = ode_fxn!,
+            activities = (
+                S_symmetric_birth_activity, (independent ? S_to_R_transition_activity : S_asymmetric_R_birth_activity), S_death_activity,
+                R_symmetric_birth_activity, (independent ? R_to_S_transition_activity : R_asymmetric_S_birth_activity), (independent ? R_to_E_transition_activity : R_asymmetric_E_birth_activity),
+                R_death_activity, E_symmetric_birth_activity, E_death_activity
+            ),
+            jump_rates = (
+                S_symmetric_birth_rate, (independent ? S_to_R_transition_rate : S_asymmetric_R_birth_rate), S_death_rate,
+                R_symmetric_birth_rate, (independent ? R_to_S_transition_rate : R_asymmetric_S_birth_rate), (independent ? R_to_E_transition_rate : R_asymmetric_E_birth_rate),
+                R_death_rate, E_symmetric_birth_rate, E_death_rate
+            ),
+            flags = event_flags,
+            sources = (
+                RESPOP_NS_INDEX, RESPOP_NS_INDEX, RESPOP_NS_INDEX,
+                RESPOP_NR_INDEX, RESPOP_NR_INDEX, RESPOP_NR_INDEX,
+                RESPOP_NR_INDEX, RESPOP_NE_INDEX, RESPOP_NE_INDEX
+            ),
+            classify! = classify_event_modes!, refresh! = refresh_event_modes!)
+    end
+
     cbs = CallbackSet(cb_list...)
 
     sjm_prob = JumpProblem(prob, Direct(),
-                           Sb_jump, Sd_jump,
-                           Rb_jump, Rd_jump,
-                           Eb_jump, Ed_jump,
-                           StoR_switch_jump,
-                           RtoS_switch_jump,
-                           RtoE_switch_jump)
+        S_symmetric_birth_jump,
+        (independent ? S_to_R_transition_jump : S_asymmetric_R_birth_jump),
+        S_death_jump,
+        R_symmetric_birth_jump,
+        (independent ? R_to_S_transition_jump : R_asymmetric_S_birth_jump),
+        (independent ? R_to_E_transition_jump : R_asymmetric_E_birth_jump),
+        R_death_jump,
+        E_symmetric_birth_jump,
+        E_death_jump; rng = rng)
 
-    base_tstops = collect(sim_eff.t0:sim_eff.save_at:sim_eff.tmax)
     event_times = passage_times
     if sim_eff.treat == true
         event_times = vcat(event_times, treat_on_times, treat_off_times)
     end
-    tstops = isempty(event_times) ? base_tstops : sort(unique(vcat(base_tstops, event_times)))
+    tstops = sort(unique(event_times))
 
-    sol = @suppress solve(sjm_prob, Tsit5(), callback = cbs,
-                          tstops = tstops)
+    sol = if get(ENV, "BARCODEMODELS_SUPPRESS_SOLVER", "true") == "false"
+        solve(sjm_prob, Tsit5(); callback = cbs,
+              tstops = tstops, saveat = sim_eff.save_at, solve_kwargs...)
+    else
+        @suppress solve(sjm_prob, Tsit5(); callback = cbs,
+                        tstops = tstops, saveat = sim_eff.save_at, solve_kwargs...)
+    end
 
     return sol
 end
@@ -658,12 +707,14 @@ function simulate_grow_kill(n0::Int64, nS::Float64, nR::Float64, nE::Float64,
     Nmax::Int64, Cc::Int64,
     treat_ons::Vector{Float64}, treat_offs::Vector{Float64},
     Nswitch::Int64; save_at::Float64 = 0.5, treat::Bool = false,
-    N_trans_switch::Float64 = 1000.0,
-    drug_effect::Union{String, Symbol} = "d")
+    Aswitch::Float64 = 1000.0,
+    drug_effect::Union{String, Symbol} = "d",
+    transition_coupling::Union{String, Symbol} = :birth_coupled)
 
     model = ResPop(ResPopParams(
         b = b, d = d, mu = mu, sig = sig, del = del, al = al,
-        Dc = Dc, k = k, psi = psi, drug_effect = drug_effect
+        Dc = Dc, k = k, psi = psi, drug_effect = drug_effect,
+        transition_coupling = transition_coupling
     ))
 
     state = ResPopState(nS, nR, nE; gam = 0.0, pass_num = 1)
@@ -672,10 +723,8 @@ function simulate_grow_kill(n0::Int64, nS::Float64, nR::Float64, nE::Float64,
         n0 = n0, t0 = t0, tmax = tmax, t_Pass = t_Pass,
         Nmax = Nmax, Cc = Cc, Nswitch = Nswitch,
         treat_ons = treat_ons, treat_offs = treat_offs,
-        save_at = save_at, treat = treat, N_trans_switch = N_trans_switch
+        save_at = save_at, treat = treat, Aswitch = Aswitch
     )
 
     return run_model_core_hybrid(model, state, sim; treat = treat)
 end
-
-

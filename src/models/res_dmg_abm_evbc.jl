@@ -133,38 +133,30 @@ function _core_grow_kill_abm!(
     @assert sim.R_real in ["b", "d", "l"] "R_real can only take 'b', 'd' or 'l' as a value."
 
     cells = state.cells
+    independent = params.transition_coupling === :independent_rate
     de = sim.drug_effect
     if de == :b
         @assert params.Dc <= params.b "When drug_effect = :b, Dc must be <= b."
     end
 
-    bmax = params.b
-    omemax_S = params.ome
-    omemax_R = params.ome * (1 - params.psi)
-    zetmax_S = params.zet_S
-    zetmax_R = params.zet_R
-    zetmax = max(zetmax_S, zetmax_R)
-    omemax = max(omemax_S, omemax_R)
-    lam = bmax - params.d
-
-    dmax_no_treat = if params.del > 0.0 && sim.R_real == "d"
-        params.d + (lam * params.del)
-    else
-        params.d
-    end
-
-    dmax_treat = dmax_no_treat + params.Dc
-
+    lam = params.b - params.d
     drug_concs = nothing
     if treat
         drug_concs = drug_treat_concs(sim.tmax, params.k, params.Dc,
                                       sim.treat_ons, sim.treat_offs, sim.dt_save_at)
-        bdmax = bmax + dmax_treat
-    else
-        bdmax = bmax + dmax_no_treat
     end
-    bdzetmax = bdmax + zetmax
-    bdzetomemax = bdmax + omemax + zetmax
+
+    # Fixed full-run bounds cover every phenotype, in either coupling mode.
+    bR_bound = sim.R_real == "b" ? params.b - lam * params.del :
+        (sim.R_real == "l" ? params.b * (1 - params.del) : params.b)
+    bmax = max(params.b, bR_bound, 0.0)
+    dR_bound = sim.R_real == "d" ? params.d + lam * params.del : params.d
+    drug_death_bound = treat && de in (:d, :c) ? params.Dc * max(1.0, 1 - params.psi) : 0.0
+    dmax_fixed = max(max(params.d, dR_bound, 0.0) + drug_death_bound, params.d + params.Dc)
+    zetmax = max(params.zet_S, params.zet_R)
+    omemax = treat ? max(params.ome, params.ome * (1 - params.psi)) : 0.0
+    transitionmax = independent ? max(params.mu, params.sig) : 0.0
+    eventmax = bmax + dmax_fixed + zetmax + omemax + transitionmax
 
     t = sim.t0
     t_rec_change = sim.tmax * sim.t_frac
@@ -190,43 +182,36 @@ function _core_grow_kill_abm!(
     Rvec = Int64[phen_counts.Rcount]
     Pvec = Int64[sim.Passage]
 
-    while t <= sim.tmax
+    if eventmax == 0.0
+        t = sim.tmax
+        push!(tvec, t)
+        push!(Nvec, Nt)
+        push!(Svec, phen_counts.Scount)
+        push!(DSvec, phen_counts.DScount)
+        push!(DRvec, phen_counts.DRcount)
+        push!(Rvec, phen_counts.Rcount)
+        push!(Pvec, sim.Passage)
+    end
+
+    while t <= sim.tmax && eventmax > 0.0
         Nt > 0 || error("ABM core loop encountered non-positive live population (Nt=$(Nt)).")
-        any(!c.alive for c in cells) || error("ABM core loop has no available dead slots for births; increase Nbuff.")
 
         live_pos = rand(1:length(cells))
-        dead_pos = rand(1:length(cells))
 
         while live_vec[live_pos] == 0
             live_pos = rand(1:length(cells))
         end
 
-        while dead_vec[dead_pos] == 0
-            dead_pos = rand(1:length(cells))
-        end
-
-        curr_rconc = 0.0
-        if treat
-            curr_rconc = curr_rc(t, drug_concs)
-            dmax_window = curr_rconc > 0.0 ? dmax_treat : dmax_no_treat
-            ran_max = curr_rconc > 0.0 ? bdzetomemax : bdzetmax
-            ran = rand(Uniform(0, ran_max))
-            denom = ran_max * Nt
-            denom > 0.0 || error("ABM core loop encountered non-positive time-step denominator (rate*Nt=$(denom)).")
-            dt = -log(rand()) / denom
-            t += dt
-        else
-            dmax_window = dmax_no_treat
-            ran = rand(Uniform(0, bdzetmax))
-            denom = bdzetmax * Nt
-            denom > 0.0 || error("ABM core loop encountered non-positive time-step denominator (rate*Nt=$(denom)).")
-            dt = -log(rand()) / denom
-            t += dt
-        end
+        dmax_window = dmax_fixed
+        ran = rand(Uniform(0, eventmax))
+        denom = eventmax * Nt
+        denom > 0.0 || error("ABM core loop encountered non-positive time-step denominator (rate*Nt=$(denom)).")
+        dt = -log(rand()) / denom
+        t += dt
 
         if t >= t_rec
             push!(Nvec, Nt)
-            push!(tvec, t)
+            push!(tvec, min(t, sim.tmax))
             push!(Svec, phen_counts.Scount)
             push!(DSvec, phen_counts.DScount)
             push!(DRvec, phen_counts.DRcount)
@@ -250,6 +235,8 @@ function _core_grow_kill_abm!(
             push!(Pvec, sim.Passage)
             break
         end
+
+        curr_rconc = treat ? curr_rc(t, drug_concs) : 0.0
 
         if params.del > 0.0
             if cells[live_pos].R
@@ -302,8 +289,9 @@ function _core_grow_kill_abm!(
             end
         end
 
-        cell_b *= (1 - (Nt / sim.Cc))
-        cell_d *= (1 - (Nt / sim.Cc))
+        density_factor = max(1 - Nt / sim.Cc, 0.0)
+        cell_b *= density_factor
+        cell_d *= density_factor
 
         if treat
             if cells[live_pos].R
@@ -330,8 +318,13 @@ function _core_grow_kill_abm!(
         cell_zet <= zetmax || error("Calculated cell_zet value $(cell_zet) exceeds maximum possible value $(zetmax). Check parameter values.")
 
         if ran < cell_b
+            any(!c.alive for c in cells) || error("ABM core loop has no available dead slots for an accepted birth; increase Nbuff.")
+            dead_pos = rand(1:length(cells))
+            while dead_vec[dead_pos] == 0
+                dead_pos = rand(1:length(cells))
+            end
             resdmg_birth_mutate_event_evbc!(state, live_pos, dead_pos,
-                                            params.mu, params.sig,
+                                            independent ? 0.0 : params.mu, independent ? 0.0 : params.sig,
                                             phen_counts, t)
 
             live_vec[dead_pos] = 1
@@ -352,6 +345,20 @@ function _core_grow_kill_abm!(
 
         if treat && ((bmax + dmax_window + zetmax) <= ran < (bmax + dmax_window + zetmax + cell_ome))
             resdmg_damage_event!(cells, live_pos, phen_counts)
+        end
+
+        if independent
+            # Fixed, disjoint intervals permit at most one event per proposal.
+            transition_start = bmax + dmax_window + zetmax + omemax
+            if !cells[live_pos].DS && !cells[live_pos].DR
+                if cells[live_pos].R
+                    if transition_start <= ran < transition_start + params.sig
+                        resdmg_R_to_S_transition_event!(cells, live_pos, phen_counts)
+                    end
+                elseif transition_start <= ran < transition_start + params.mu
+                    resdmg_S_to_R_transition_event!(cells, live_pos, phen_counts)
+                end
+            end
         end
 
         if Nt <= 0

@@ -2,6 +2,13 @@
 
 const RESPOP_DRUG_EFFECTS = (:d, :b, :c)
 const RESDMG_DRUG_EFFECTS = (:d, :b, :c)
+const TRANSITION_COUPLINGS = (:birth_coupled, :independent_rate)
+
+function normalize_transition_coupling(transition_coupling)
+    coupling = transition_coupling isa AbstractString ? Symbol(transition_coupling) : transition_coupling
+    coupling in TRANSITION_COUPLINGS || error("transition_coupling must be :birth_coupled or :independent_rate.")
+    return coupling
+end
 
 function normalize_respop_drug_effect(drug_effect)
     de = drug_effect isa AbstractString ? Symbol(drug_effect) : drug_effect
@@ -27,15 +34,21 @@ struct ResPopParams
     k::Float64
     psi::Float64
     drug_effect::Symbol
+    transition_coupling::Symbol
 end
 
-function ResPopParams(; b, d, rho=0.0, mu, sig, del, al, Dc, k, psi, drug_effect="d")
+function ResPopParams(; b, d, rho=0.0, mu, sig, del, al, Dc, k, psi, drug_effect="d",
+                      transition_coupling=:birth_coupled)
     de = normalize_respop_drug_effect(drug_effect)
     return ResPopParams(
         Float64(b), Float64(d), Float64(rho), Float64(mu), Float64(sig), Float64(del),
-        Float64(al), Float64(Dc), Float64(k), Float64(psi), de
+        Float64(al), Float64(Dc), Float64(k), Float64(psi), de,
+        normalize_transition_coupling(transition_coupling)
     )
 end
+
+ResPopParams(b, d, rho, mu, sig, del, al, Dc, k, psi, drug_effect) =
+    ResPopParams(; b, d, rho, mu, sig, del, al, Dc, k, psi, drug_effect)
 
 struct ResDmgParams
     b::Float64
@@ -51,24 +64,39 @@ struct ResDmgParams
     k::Float64
     psi::Float64
     drug_effect::Symbol
+    transition_coupling::Symbol
 end
 
-function ResDmgParams(; b, d, rho=0.0, mu, sig, del, ome, zet_S, zet_R, Dc, k, psi, drug_effect="d")
+function ResDmgParams(; b, d, rho=0.0, mu, sig, del, ome, zet_S, zet_R, Dc, k, psi, drug_effect="d",
+                      transition_coupling=:birth_coupled)
     de = normalize_resdmg_drug_effect(drug_effect)
     return ResDmgParams(
         Float64(b), Float64(d), Float64(rho), Float64(mu), Float64(sig), Float64(del),
-        Float64(ome), Float64(zet_S), Float64(zet_R), Float64(Dc), Float64(k), Float64(psi), de
+        Float64(ome), Float64(zet_S), Float64(zet_R), Float64(Dc), Float64(k), Float64(psi), de,
+        normalize_transition_coupling(transition_coupling)
     )
 end
 
+ResDmgParams(b, d, rho, mu, sig, del, ome, zet_S, zet_R, Dc, k, psi, drug_effect) =
+    ResDmgParams(; b, d, rho, mu, sig, del, ome, zet_S, zet_R, Dc, k, psi, drug_effect)
+
 function validate_model_params(params::ResPopParams)
+    params.b > params.d || error("Baseline population growth rate will lead to contraction or no growth; require b > d.")
     0.0 <= params.rho <= 1.0 || error("rho must be between 0 and 1.")
-    0.0 <= params.mu <= 1.0 || error("mu must be between 0 and 1.")
-    0.0 <= params.sig <= 1.0 || error("sig must be between 0 and 1.")
+    normalize_transition_coupling(params.transition_coupling)
+    if params.transition_coupling === :birth_coupled
+        0.0 <= params.mu <= 1.0 || error("mu must be between 0 and 1.")
+        0.0 <= params.sig <= 1.0 || error("sig must be between 0 and 1.")
+        0.0 <= params.al <= 1.0 || error("al must be between 0 and 1.")
+        0.0 <= (params.al + params.sig) <= 1.0 || error("al and sig must not sum to > 1.0")
+    else
+        for name in (:mu, :sig, :al)
+            rate = getproperty(params, name)
+            isfinite(rate) && rate >= 0.0 || error("$(name) must be finite and >= 0 in independent_rate mode.")
+        end
+    end
     0.0 <= params.del <= 1.0 || error("del must be between 0 and 1.")
-    0.0 <= params.al <= 1.0 || error("al must be between 0 and 1.")
     params.psi <= 1.0 || error("psi must be <= 1.0.")
-    0.0 <= (params.al + params.sig) <= 1.0 || error("al and sig must not sum to > 1.0")
     params.drug_effect in RESPOP_DRUG_EFFECTS || error("ResPop drug_effect must be :d, :b, or :c")
     if params.drug_effect === :b
         params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
@@ -89,9 +117,18 @@ function validate_model_params_strict(params::ResPopParams)
 end
 
 function validate_model_params(params::ResDmgParams)
+    params.b > params.d || error("Baseline population growth rate will lead to contraction or no growth; require b > d.")
     0.0 <= params.rho <= 1.0 || error("rho must be between 0 and 1.")
-    0.0 <= params.mu <= 1.0 || error("mu must be between 0 and 1.")
-    0.0 <= params.sig <= 1.0 || error("sig must be between 0 and 1.")
+    normalize_transition_coupling(params.transition_coupling)
+    if params.transition_coupling === :birth_coupled
+        0.0 <= params.mu <= 1.0 || error("mu must be between 0 and 1.")
+        0.0 <= params.sig <= 1.0 || error("sig must be between 0 and 1.")
+    else
+        for name in (:mu, :sig)
+            rate = getproperty(params, name)
+            isfinite(rate) && rate >= 0.0 || error("$(name) must be finite and >= 0 in independent_rate mode.")
+        end
+    end
     0.0 <= params.del <= 1.0 || error("del must be between 0 and 1.")
     params.psi <= 1.0 || error("psi must be <= 1.0.")
     params.ome >= 0.0 || error("ome must be >= 0.")
@@ -131,12 +168,23 @@ struct SimParams
     Nswitch::Int64
     save_at::Float64
     treat::Bool
-    N_trans_switch::Float64
+    Aswitch::Float64
+end
+
+"""Validate the source-population and full event-rate hybrid thresholds."""
+function validate_hybrid_switching_thresholds(Nswitch, Aswitch)
+    Nswitch isa Integer || error("Nswitch must be an integer.")
+    Nswitch > 0 || error("Nswitch must be > 0.")
+    Aswitch isa Real || error("Aswitch must be a number.")
+    activity_threshold = Float64(Aswitch)
+    isfinite(activity_threshold) && activity_threshold > 0 || error("Aswitch must be finite and > 0.")
+    return nothing
 end
 
 function SimParams(; n0, tmax, Nmax, Cc, Nswitch, treat_ons, treat_offs,
                     t0=0.0, t_Pass=Float64[], save_at=0.5, treat=false,
-                    N_trans_switch=1000.0)
+                    Aswitch=1000.0)
+    validate_hybrid_switching_thresholds(Nswitch, Aswitch)
     Int64(Cc) > 0 || error("Cc must be > 0.")
 
     return SimParams(
@@ -151,7 +199,7 @@ function SimParams(; n0, tmax, Nmax, Cc, Nswitch, treat_ons, treat_offs,
         Int64(Nswitch),
         Float64(save_at),
         Bool(treat),
-        Float64(N_trans_switch)
+        Float64(Aswitch)
     )
 end
 
@@ -213,7 +261,7 @@ struct ExperimentParams
     treat_offs::Vector{Float64}
     t_keep::Vector{Float64}
     Nswitch::Int64
-    N_trans_switch::Float64
+    Aswitch::Float64
     save_at::Float64
     n_rep::Int64
     drug_treatment::Bool
@@ -236,14 +284,14 @@ struct SimpleSimParams
     treat_ons::Vector{Float64}
     treat_offs::Vector{Float64}
     Nswitch::Int64
-    N_trans_switch::Float64
+    Aswitch::Float64
     save_at::Float64
     drug_treatment::Bool
 end
 
 function validate_simple_params(; n0, tmax, Nmax, Cc,
                                 treat_ons, treat_offs,
-                                Nswitch, N_trans_switch,
+                                Nswitch, Aswitch,
                                 save_at, drug_treatment)
     n0 isa Integer || error("n0 must be an integer.")
     n0 > 0 || error("n0 must be > 0.")
@@ -262,11 +310,7 @@ function validate_simple_params(; n0, tmax, Nmax, Cc,
     treat_offs isa AbstractVector{<:Real} || error("treat_offs must be a vector of numbers.")
     length(treat_ons) == length(treat_offs) || error("treat_ons and treat_offs must have matching lengths.")
 
-    Nswitch isa Integer || error("Nswitch must be an integer.")
-    Nswitch > 0 || error("Nswitch must be > 0.")
-
-    N_trans_switch isa Real || error("N_trans_switch must be a number.")
-    N_trans_switch > 0 || error("N_trans_switch must be > 0.")
+    validate_hybrid_switching_thresholds(Nswitch, Aswitch)
 
     save_at isa Real || error("save_at must be a number.")
     save_at > 0 || error("save_at must be > 0.")
@@ -278,7 +322,7 @@ end
 
 function SimpleSimParams(; n0, tmax, Nmax, Cc,
                          treat_ons=Float64[], treat_offs=Float64[],
-                         Nswitch=100, N_trans_switch=1000.0,
+                         Nswitch=100, Aswitch=1000.0,
                          save_at=0.5, drug_treatment=true)
     validate_simple_params(
         n0 = n0,
@@ -288,7 +332,7 @@ function SimpleSimParams(; n0, tmax, Nmax, Cc,
         treat_ons = treat_ons,
         treat_offs = treat_offs,
         Nswitch = Nswitch,
-        N_trans_switch = N_trans_switch,
+        Aswitch = Aswitch,
         save_at = save_at,
         drug_treatment = drug_treatment
     )
@@ -301,7 +345,7 @@ function SimpleSimParams(; n0, tmax, Nmax, Cc,
         Vector{Float64}(treat_ons),
         Vector{Float64}(treat_offs),
         Int64(Nswitch),
-        Float64(N_trans_switch),
+        Float64(Aswitch),
         Float64(save_at),
         Bool(drug_treatment)
     )
@@ -309,7 +353,7 @@ end
 
 function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                                     treat_ons, treat_offs, t_keep, Nswitch,
-                                    N_trans_switch, save_at, n_rep, drug_treatment,
+                                    Aswitch, save_at, n_rep, drug_treatment,
                                     full_sol, run_IC, IC_n0, IC_tmax,
                                     IC_treat_on, run_colony, nCol, tCol, ColNmax)
     n0 isa Integer || error("n0 must be an integer.")
@@ -349,11 +393,7 @@ function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
     treat_offs isa AbstractVector{<:Real} || error("treat_offs must be a vector of numbers.")
     t_keep isa AbstractVector{<:Real} || error("t_keep must be a vector of numbers.")
 
-    Nswitch isa Integer || error("Nswitch must be an integer.")
-    Nswitch > 0 || error("Nswitch must be > 0.")
-
-    N_trans_switch isa Real || error("N_trans_switch must be a number.")
-    N_trans_switch > 0 || error("N_trans_switch must be > 0.")
+    validate_hybrid_switching_thresholds(Nswitch, Aswitch)
 
     save_at isa Real || error("save_at must be a number.")
     save_at > 0 || error("save_at must be > 0.")
@@ -389,7 +429,7 @@ end
 
 function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                           treat_ons, treat_offs, t_keep, Nswitch,
-                          N_trans_switch=1000.0,
+                          Aswitch=1000.0,
                           save_at=0.5, n_rep=4, drug_treatment=true,
                           full_sol=false, run_IC=false, IC_n0=1000,
                           IC_tmax=4.0, IC_treat_on=1.0, run_colony=false,
@@ -406,7 +446,7 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         treat_offs = treat_offs,
         t_keep = t_keep,
         Nswitch = Nswitch,
-        N_trans_switch = N_trans_switch,
+        Aswitch = Aswitch,
         save_at = save_at,
         n_rep = n_rep,
         drug_treatment = drug_treatment,
@@ -439,7 +479,7 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         Vector{Float64}(treat_offs),
         Vector{Float64}(t_keep),
         Int64(Nswitch),
-        Float64(N_trans_switch),
+        Float64(Aswitch),
         Float64(save_at),
         Int64(n_rep),
         Bool(drug_treatment),

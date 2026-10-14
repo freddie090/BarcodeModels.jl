@@ -100,14 +100,14 @@ Drug exposure is modelled through a time-dependent effective concentration $D_c(
 
 `BarcodeModels.jl` also provides a simplified **single-population simulation layer** through `simulate_simple(model, sim)`.
 
-This pathway is intended for rapid model interrogation without the full replicate/passaging experiment workflow.
+This method is intended for quick model implementation without the full replicate/passaging experiment workflow. This version is useful for testing and debugging and for generating single-run outputs for a given model and parameter set.
 
 Features of the simple simulation layer include:
 - Shared dispatch across model families (`ResPop`, `ResDmg`, ABM variants, and EvBC ABM variants).
 - Input via `SimpleSimParams` for one-population runs with optional treatment windows.
 - Compact outputs for trajectory and barcode summaries (`sol_df`; plus `lin_df` for ABM classes).
 - EvBC support returns lineage outputs (`lineage_df`) with ground-truth relatedness metadata.
-- No experiment-level expansion/passaging/replicate orchestration (use `simulate_experiment` for those workflows).
+- No experiment-level expansion/passaging/replicate orchestration.
 
 ### Outputs
 
@@ -130,7 +130,7 @@ Features of the experimental design include:
 - Scheduled passaging by time (`t_Pass`) and/or cap-triggered passaging (`Nmax`).
 - Replicate experiments (`n_rep`) under identical fixed design settings.
 - Optional treatment windows (`treat_ons`, `treat_offs`) and compact observation outputs (`t_keep`).
-- Optional assay branches (`run_IC`, `run_colony`) where enabled in simulation pipelines.
+
 
 ### Outputs
 
@@ -189,7 +189,7 @@ sim = SimpleSimParams(
     treat_ons = Float64[1.0],
     treat_offs = Float64[30.0],
     Nswitch = 500,
-    N_trans_switch = 1000.0,
+    Aswitch = 1000.0,
     save_at = 0.5,
     drug_treatment = true
 )
@@ -268,24 +268,46 @@ result_dmg_hybrid = simulate_experiment(model_dmg_hybrid, exp)
 result_dmg_abm = simulate_experiment(model_dmg_abm, exp)
 ```
 
+### Phenotypic Transition Modes
+
+All hybrid, ABM, and EvBC model constructors support both modes of phenotypic switching:
+- **Birth-coupled:** *transitions occur only at division events, with probabilities per division. One daughter cell inherits the parent's phenotype. **(Default)***
+- **Independent:** *transitions occur independently of division, with rates per day.*
+
+Usage example:
+
+```julia
+coupled = ResPopParams(b=0.8, d=0.2, mu=0.01, sig=0.02, del=0.1,
+    al=0.03, Dc=0.4, k=1.0, psi=0.8, transition_coupling=:birth_coupled)
+independent = ResPopParams(b=0.8, d=0.2, mu=0.01, sig=0.02, del=0.1,
+    al=0.03, Dc=0.4, k=1.0, psi=0.8, transition_coupling=:independent_rate)
+```
+
+
+
 ## Parameter reference
+
+All ResPop and ResDmg model constructors require `b > d` for positive baseline growth. Effective growth under treatment can still be negative.
 
 ### `ResPopParams`
 Core parameters for the ResPop model family (hybrid and ABM).
 
 | Parameter | Type (default) | Meaning | Constraints |
 |---|---|---|---|
-| `b` | `Float64` (required) | Baseline (Sensitive) per-cell birth rate ($b$). | Must be valid numeric input. |
-| `d` | `Float64` (required) | Baseline (Sensitive) per-cell death rate ($d$). | Must be valid numeric input. |
+| `b` | `Float64` (required) | Baseline (Sensitive) per-cell birth rate ($b$). | Must be valid numeric input; `b > d`. |
+| `d` | `Float64` (required) | Baseline (Sensitive) per-cell death rate ($d$). | Must be valid numeric input; `d < b`. |
 | `rho` | `Float64` (`0.0`) | Initial resistant fraction at initial barcoding `(t=0)` ($\rho$). | `0 ≤ rho ≤ 1`. |
-| `mu` | `Float64` (required) | `S→R` switching probability per division ($\mu$). | `0 ≤ mu ≤ 1`. |
-| `sig` | `Float64` (required) | `R→S` switching probability per division ($\sigma$). | `0 ≤ sig ≤ 1`. |
+| `mu` | `Float64` (required) | S division outcome probability in coupled mode; S→R rate/day in independent mode ($\mu$). | Birth coupled: `0 ≤ mu ≤ 1`; independent: `0 ≤ mu`. |
+| `sig` | `Float64` (required) | R division outcome probability in coupled mode; R→S rate/day in independent mode ($\sigma$). | Birth coupled: `0 ≤ sig ≤ 1`; independent: `0 ≤ sig`. |
 | `del` | `Float64` (required) | Resistant fitness-cost term ($\delta$). | `0 ≤ del ≤ 1`. |
-| `al` | `Float64` (required) | `R→E` switching probability per division ($\alpha$). | `0 ≤ al ≤ 1`, and `al + sig ≤ 1`. |
+| `al` | `Float64` (required) | R→E daughter outcome factor in coupled mode; R→E rate/day in independent mode ($\alpha$). Both multiply current treatment activation γ. | Birth coupled: `0 ≤ al ≤ 1`, `al + sig ≤ 1`; independent: `0 ≤ al`. |
 | `Dc` | `Float64` (required) | Drug effect magnitude scale ($D_c$). | If `drug_effect == :b`, must satisfy additional bounds (see below). |
 | `k` | `Float64` (required) | Drug concentration accumulation/decay rate ($\kappa$). | Must be valid numeric input. |
 | `psi` | `Float64` (required) | Drug attenuation factor for resistant/escape phenotypes ($\psi$). | `0 ≤ psi ≤ 1`. |
 | `drug_effect` | `Symbol` (`:d`) | Drug action mode: death-only (`:d`), birth-only (`:b`), combined (`:c`). | Must be one of `:d`, `:b`, `:c`. |
+| `transition_coupling` | `Symbol` (`:birth_coupled`) | Division outcomes or independent conversion of existing cells. | `:birth_coupled` or `:independent_rate`; exact string equivalents also accepted. |
+
+- `R_real` is an ABM simulation keyword controlling how the resistant fitness cost `del` is realised: `"b"` (default) reduces birth, `"d"` increases death, and `"l"` scales both birth and death by `1-del`. All three give the same untreated baseline net growth, `(b-d)*(1-del)`, but different cell turnover. Pass it to `simulate_experiment` or `simulate_simple`.
 
 ### `ResDmgParams`
 Core parameters for the ResDmg model family (hybrid and ABM). ResDmg uses `S, DS, DR, R` states and does not include an escape (`E`) transition.
@@ -296,12 +318,15 @@ Core parameters for the ResDmg model family (hybrid and ABM). ResDmg uses `S, DS
 | `ome` | `Float64` (required) | Damage transition rate ($\omega$) into damaged states (`S->DS`, `R->DR`, with `R` damage attenuated by `1-psi`). | `ome >= 0`. |
 | `zet_S` | `Float64` (required) | Repair transition rate ($\zeta_S$) from `DS->S`. | `zet_S >= 0` and `zet_R >= zet_S`. |
 | `zet_R` | `Float64` (required) | Repair transition rate ($\zeta_R$) from `DR->R`. | `zet_R >= 0` and `zet_R >= zet_S`. |
+| `transition_coupling` | `Symbol` (`:birth_coupled`) | As for ResPop, applying to undamaged S↔R only. | `:birth_coupled` or `:independent_rate`; exact string equivalents also accepted. |
 
 \
 Additional `drug_effect == :b` requirement:
 - `Dc <= b`
 - if `psi < 1`, `Dc*(1-psi) <= b*(1-del)`
 \
+
+
 
 ### `ABMParams`
 Parameters specific to the agent-based model implementation.
@@ -336,12 +361,19 @@ Experiment design shared by both model families.
 | `treat_ons` | `Vector{Float64}` (required) | Treatment on-times. | Vector of numeric times. |
 | `treat_offs` | `Vector{Float64}` (required) | Treatment off-times. | Vector of numeric times. |
 | `t_keep` | `Vector{Float64}` (required) | Observation times to retain in compact outputs. | Vector of numeric times. |
-| `Nswitch` | `Int64` (required) | Hybrid model ODE/jump switching threshold. | `> 0`. |
-| `N_trans_switch` | `Float64` (`1000.0`) | Hybrid transition-activity threshold for deterministic vs jump switching (`S↔R`, `R→E`). | `> 0`. |
+| `Nswitch` | `Int64` (required) | Minimum source population for deterministic treatment of each hybrid event. | Positive integer. |
+| `Aswitch` | `Float64` (`1000.0`) | Minimum full effective event rate for deterministic treatment, in events per simulation time unit (events/day when rates use days). | Finite and `> 0`. |
 | `save_at` | `Float64` (`0.5`) | Hybrid solver save interval. | `> 0`. |
 | `n_rep` | `Int64` (`4`) | Number of replicate experiments. | `> 0`. |
 | `drug_treatment` | `Bool` (`true`) | Whether treatment is applied in main experiment runs. | Boolean. |
 | `full_sol` | `Bool` (`false`) | Return full per-time simulated trajectory table. | Boolean. |
+
+### Hybrid event switching
+
+`ResPop` and `ResDmg` classify each division outcome, death, damage, and repair event separately. An event is deterministic only when its source population is at least `Nswitch` **and** its full effective rate is at least `Aswitch`; otherwise it uses a stochastic jump. Full birth/death rates include current treatment, density, fitness, and (in coupled mode) division-outcome adjustments. Independent phenotype conversions use the values described above without birth or density scaling. Biological rates are independent of numerical representation. `SimpleSimParams` defaults to `Nswitch = 100` and `Aswitch = 1000.0`.
+
+Modes are initialized before solving and refreshed at accepted solver steps and after jumps, treatment updates, passaging, and concentration clamps. Check switching thresholds against fully stochastic runs when extinction or founder-arrival timing matters.
+
 
 ## Key API
 - `ResPopParams`: ResPop biological parameters.
@@ -374,7 +406,7 @@ Run tests with: `julia --project -e "using Pkg; Pkg.test()"`
 
 ## Evolvable Barcode (EvBC) Functionality
 
-### Current scope (important)
+### Current scope
 The EvBC model variants currently provide **ground-truth lineage tracking** for all simulated cells.
 
 

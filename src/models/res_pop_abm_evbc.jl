@@ -124,41 +124,28 @@ function _core_grow_kill_abm!(
     @assert sim.R_real in ["b", "d", "l"] "R_real can only take 'b', 'd' or 'l' as a value."
 
     cells = state.cells
+    independent = params.transition_coupling === :independent_rate
     de = sim.drug_effect
     if de == :b
         @assert params.Dc <= params.b "When drug_effect = :b, Dc must be <= b."
     end
 
-    bmax = params.b
-    dmax = params.d
-    lam = bmax - dmax
-
-    if params.del > 0.0
-        if sim.R_real == "d"
-            dmax = dmax + (lam * params.del)
-            c_bdmax = bmax + dmax
-        else
-            c_bdmax = bmax + dmax
-        end
-    else
-        c_bdmax = bmax + dmax
-    end
-
+    lam = params.b - params.d
     drug_concs = nothing
     if treat
         drug_concs = drug_treat_concs(sim.tmax, params.k, params.Dc,
                                       sim.treat_ons, sim.treat_offs, sim.dt_save_at)
-        if de == :d || de == :c
-            dmax = params.d + maximum(drug_concs["dconc"])
-            t_bdmax = bmax + dmax
-        else
-            t_bdmax = bmax + dmax
-        end
-    else
-        t_bdmax = bmax + dmax
     end
 
-    bdmax = maximum([c_bdmax, t_bdmax])
+    # Fixed full-run bounds cover every phenotype, in either coupling mode.
+    bR_bound = sim.R_real == "b" ? params.b - lam * params.del :
+        (sim.R_real == "l" ? params.b * (1 - params.del) : params.b)
+    bmax = max(params.b, bR_bound, 0.0)
+    dR_bound = sim.R_real == "d" ? params.d + lam * params.del : params.d
+    drug_death_bound = treat && de in (:d, :c) ? params.Dc * max(1.0, 1 - params.psi) : 0.0
+    dmax = max(params.d, dR_bound, 0.0) + drug_death_bound
+    transitionmax = independent ? max(params.mu, params.sig + params.al) : 0.0
+    bdmax = bmax + dmax + transitionmax
 
     t = sim.t0
     t_rec_change = sim.tmax * sim.t_frac
@@ -181,19 +168,23 @@ function _core_grow_kill_abm!(
     Evec = Int64[phen_counts.Ecount]
     Pvec = Int64[sim.Passage]
 
-    while t <= sim.tmax
+    if bdmax == 0.0
+        t = sim.tmax
+        push!(tvec, t)
+        push!(Nvec, Nt)
+        push!(Svec, phen_counts.Scount)
+        push!(Rvec, phen_counts.Rcount)
+        push!(Evec, phen_counts.Ecount)
+        push!(Pvec, sim.Passage)
+    end
+
+    while t <= sim.tmax && bdmax > 0.0
         Nt > 0 || error("ABM core loop encountered non-positive live population (Nt=$(Nt)).")
-        any(!c.alive for c in cells) || error("ABM core loop has no available dead slots for births; increase Nbuff.")
 
         live_pos = rand(1:length(cells))
-        dead_pos = rand(1:length(cells))
 
         while live_vec[live_pos] == 0
             live_pos = rand(1:length(cells))
-        end
-
-        while dead_vec[dead_pos] == 0
-            dead_pos = rand(1:length(cells))
         end
 
         ran = rand(Uniform(0, bdmax))
@@ -204,7 +195,7 @@ function _core_grow_kill_abm!(
 
         if t >= t_rec
             push!(Nvec, Nt)
-            push!(tvec, t)
+            push!(tvec, min(t, sim.tmax))
             push!(Svec, phen_counts.Scount)
             push!(Rvec, phen_counts.Rcount)
             push!(Evec, phen_counts.Ecount)
@@ -275,11 +266,20 @@ function _core_grow_kill_abm!(
             end
         end
 
-        cell_b *= (1 - (Nt / sim.Cc))
-        cell_d *= (1 - (Nt / sim.Cc))
+        density_factor = max(1 - Nt / sim.Cc, 0.0)
+        cell_b *= density_factor
+        cell_d *= density_factor
 
         if ran < cell_b
-            if treat
+            any(!c.alive for c in cells) || error("ABM core loop has no available dead slots for an accepted birth; increase Nbuff.")
+            dead_pos = rand(1:length(cells))
+            while dead_vec[dead_pos] == 0
+                dead_pos = rand(1:length(cells))
+            end
+            if independent
+                _birth_mutate_event_evbc!(state, live_pos, dead_pos,
+                                          0.0, 0.0, 0.0, phen_counts, t)
+            elseif treat
                 curr_rconc = curr_rc(t, drug_concs)
                 al_scal = params.al * curr_rconc
                 _birth_mutate_event_evbc!(state, live_pos, dead_pos,
@@ -301,6 +301,23 @@ function _core_grow_kill_abm!(
             live_vec[live_pos] = 0
             dead_vec[live_pos] = 1
             Nt -= 1
+        end
+
+        if independent
+            # Fixed, disjoint intervals permit at most one event per proposal.
+            transition_start = bmax + dmax
+            if cells[live_pos].R && !cells[live_pos].E
+                gamma = treat ? clamp(curr_rc(t, drug_concs), 0.0, 1.0) : 0.0
+                if transition_start <= ran < transition_start + params.sig
+                    respop_R_to_S_transition_event!(cells, live_pos, phen_counts)
+                elseif transition_start + params.sig <= ran < transition_start + params.sig + params.al * gamma
+                    respop_R_to_E_transition_event!(cells, live_pos, phen_counts)
+                end
+            elseif !cells[live_pos].R && !cells[live_pos].E
+                if transition_start <= ran < transition_start + params.mu
+                    respop_S_to_R_transition_event!(cells, live_pos, phen_counts)
+                end
+            end
         end
 
         if Nt <= 0

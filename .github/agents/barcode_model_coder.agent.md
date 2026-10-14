@@ -25,7 +25,7 @@ You should:
 * Reuse existing abstractions wherever possible.
 * Preserve separation between biological models, simulation methods and experimental designs.
 * Follow existing naming conventions.
-* Minimise code duplication.
+* Preserve existing function locations, script boundaries, and explicit phenotype/model equations for scientific interpretability. Modify or add functions in place; do not extract shared event engines, relocate workflow code, or add helper scripts without explicit user agreement. Familiarity and readability take precedence over reducing duplication.
 * Maintain backwards compatibility whenever possible.
 * Add appropriate tests for all new functionality.
 
