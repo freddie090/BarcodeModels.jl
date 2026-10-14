@@ -74,15 +74,27 @@ function _birth_mutate_event_evbc!(state::ResPopABMEvBCState,
         throw(ArgumentError("Invalid cell position or birth position"))
     end
 
-    cell_arr[birth_pos].barcode = cell_arr[cell_pos].barcode
-    cell_arr[birth_pos].R = cell_arr[cell_pos].R
-    cell_arr[birth_pos].E = cell_arr[cell_pos].E
+    mother_id = cell_arr[cell_pos].id
+    mother_barcode = cell_arr[cell_pos].barcode
+    mother_R = cell_arr[cell_pos].R
+    mother_E = cell_arr[cell_pos].E
+    mother_pheno = _respop_pheno_label(cell_arr[cell_pos])
+
+    daughter_a_id = state.next_cell_id
+    cell_arr[cell_pos].id = daughter_a_id
+    cell_arr[cell_pos].parent_id = mother_id
+    cell_arr[cell_pos].birth_time = curr_t
+    push!(state.lineage_records, LineageRecord(daughter_a_id, mother_id, curr_t, mother_pheno, mother_pheno, mother_barcode))
+    state.next_cell_id += 1
+
+    cell_arr[birth_pos].barcode = mother_barcode
+    cell_arr[birth_pos].R = mother_R
+    cell_arr[birth_pos].E = mother_E
     cell_arr[birth_pos].alive = true
-    child_id = state.next_cell_id
-    cell_arr[birth_pos].id = child_id
-    cell_arr[birth_pos].parent_id = cell_arr[cell_pos].id
+    daughter_b_id = state.next_cell_id
+    cell_arr[birth_pos].id = daughter_b_id
+    cell_arr[birth_pos].parent_id = mother_id
     cell_arr[birth_pos].birth_time = curr_t
-    parent_pheno = _respop_pheno_label(cell_arr[cell_pos])
 
     mut_p = rand()
 
@@ -109,7 +121,7 @@ function _birth_mutate_event_evbc!(state::ResPopABMEvBCState,
     end
 
     child_pheno = _respop_pheno_label(cell_arr[birth_pos])
-    push!(state.lineage_records, LineageRecord(child_id, cell_arr[cell_pos].id, curr_t, parent_pheno, child_pheno, cell_arr[birth_pos].barcode))
+    push!(state.lineage_records, LineageRecord(daughter_b_id, mother_id, curr_t, mother_pheno, child_pheno, cell_arr[birth_pos].barcode))
     state.next_cell_id += 1
 end
 
