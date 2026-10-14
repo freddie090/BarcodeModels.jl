@@ -339,6 +339,10 @@ end
     @test all(in(names(result["lineage_df"])).(["parent_pheno", "child_pheno"]))
     @test "barcode" in names(result["lineage_df"])
     @test "alive_at_end" in names(result["lineage_df"])
+
+    children = build_tree(result["lineage_df"])
+    @test !isempty(children) && all(==(2), length.(values(children)))
+    @test all(<=(2), length.(values(build_tree(result["lineage_df"]; extant_only = true))))
 end
 
 @testset "BarcodeModels integration (ResDmg ABM EvBC)" begin
@@ -369,10 +373,14 @@ end
     @test all(in(names(result["lineage_df"])).(["parent_pheno", "child_pheno"]))
     @test "barcode" in names(result["lineage_df"])
     @test "alive_at_end" in names(result["lineage_df"])
+
+    children = build_tree(result["lineage_df"])
+    @test !isempty(children) && all(==(2), length.(values(children)))
+    @test all(<=(2), length.(values(build_tree(result["lineage_df"]; extant_only = true))))
 end
 
 @testset "Lineage utilities" begin
-    lineage_df = DataFrame(
+    lineage_df = BarcodeModels.DataFrame(
         id = Int64[1, 2, 3, 4, 5],
         parent_id = Int64[0, 1, 1, 3, 1],
         birth_time = Float64[0.0, 1.0, 1.2, 2.0, 2.4],
@@ -418,14 +426,14 @@ end
 
     meta_df = lineage_node_metadata(lineage_df)
     @test all(in(names(meta_df)).(["id", "parent_id", "birth_time", "parent_pheno", "child_pheno", "barcode", "alive_at_end", "rep"]))
-    @test nrow(meta_df) == nrow(lineage_df)
+    @test BarcodeModels.nrow(meta_df) == BarcodeModels.nrow(lineage_df)
 
     edge_bc_df = lineage_edge_barcodes(lineage_df)
-    @test nrow(edge_bc_df) == 4
+    @test BarcodeModels.nrow(edge_bc_df) == 4
     @test all(in(names(edge_bc_df)).(["parent_id", "id", "parent_barcode", "child_barcode"]))
     @test all(edge_bc_df.parent_barcode .== edge_bc_df.child_barcode)
 
-    lineage_df_no_alive = select(lineage_df, Not(:alive_at_end))
+    lineage_df_no_alive = BarcodeModels.select(lineage_df, BarcodeModels.Not(:alive_at_end))
     @test_throws ArgumentError build_tree(lineage_df_no_alive; extant_only = true)
     @test_throws ArgumentError build_phylogeny(lineage_df_no_alive; extant_only = true)
     @test_throws ArgumentError lineage_to_newick(lineage_df_no_alive, 1; extant_only = true)
