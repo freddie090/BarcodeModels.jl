@@ -4,6 +4,8 @@ This document provides a high-level map of the `BarcodeModels.jl` codebase for a
 
 The live repository should be treated as the source of truth. If this document disagrees with the code, follow the code.
 
+For intended changes, use the latest user-agreed scope and corrections; earlier plans remain history. Preserve existing function locations and script boundaries. Reuse existing helpers without treating shared functionality as permission to extract an engine or move workflow code.
+
 ## Package Purpose
 
 `BarcodeModels.jl` is a framework for modelling cancer evolution experiments involving cellular barcoding, lineage tracking, treatment response, and resistance evolution.
@@ -126,6 +128,13 @@ BarcodeModels.jl
 - `src/`: package implementation.
 - `test/`: test and manual test entry points.
 - `.github/`: repository automation and GitHub configuration.
+- `.github/agents/`: model-design and model-coder agent definitions.
+- `.agents/skills/`: codebase, model-design, and model-implementation skills and references.
+- `package_code_plans/`: dated package-change plans, including complete-event hybrid switching and selectable coupling; some are local/ignored.
+- `model_specs/`: dated model specifications and companion implementation records; local/ignored content may be absent in another checkout.
+- `run_tests_codex_local.ps1`: existing local isolated Julia test runner, when available.
+- `julia_testing_venv/`: local isolated Julia depot/cache, not scientific analysis output.
+- `projects/`, `project_specs/`, and `example_project/`: analysis/project workflows and records; remain outside a package-change task unless explicitly included.
 
 ## Package Entry Point
 
@@ -155,6 +164,7 @@ BarcodeModels.jl
     - `ExperimentParams`
     - `SimpleSimParams`
   - Contains parameter normalisation and validation functions.
+  - Biological coupling and simulation thresholds have separate ownership; see [key_interfaces.md](key_interfaces.md) for units, validation, compatibility forwarding, and propagation contracts.
   - Biological model parameters belong here when they describe rates, transition probabilities, fitness costs, treatment response, or other hypothesis-level assumptions.
   - Experimental design parameters belong here when they describe seeding, timing, passaging, treatment windows, observation, or measurement workflow.
   - Model-class settings belong here only when they configure a simulation methodology, such as `ABMParams`.
@@ -245,12 +255,12 @@ Naming note: existing concrete Julia type names such as `ResPop_ABM` encode both
 - `src/helpers/common_helpers.jl`
   - Shared constants and utilities for state indexing, total population calculation, logistic growth factors, passaging draws, and nearest-time lookup.
   - Hybrid models rely on the index constants matching their `ComponentArray` state ordering.
-  - Add small cross-model mathematical or indexing helpers here.
+  - Reuse existing mathematical and indexing helpers; propose new extraction separately when required.
 
 - `src/helpers/ode_helpers.jl`
   - Shared hybrid model drug-effect helpers.
   - Defines death-only, birth-only, and combined drug-effect calculations used by hybrid models.
-  - Add hybrid/ODE helper functions here when they are reusable across biological models.
+  - Reuse existing helpers. Keep complete-event classification and model-local rate builders in their current model scripts.
 
 - `src/helpers/abm_helpers.jl`
   - Shared ABM utilities for treatment concentration schedules, barcode probability generation, live/dead cell management, generic birth/death helpers, count tables, and tracking vectors.
@@ -270,24 +280,30 @@ Naming note: existing concrete Julia type names such as `ResPop_ABM` encode both
 ## Tests
 
 - `test/runtests.jl`
-  - Main package test entry point used by `Pkg.test()`.
+  - Main package test entry point used by `Pkg.test()` and the local runner. Inspect its actual includes before reporting coverage; a file's presence in `test/` does not mean it runs automatically.
+
+- `test/hybrid_events.jl` and `test/hybrid_solver_checks.jl`
+  - Focused hybrid accounting, classification, fractional-boundary, analytical, and solver checks; these may be local/ignored.
+- `test/transition_coupling.jl`
+  - Coupling interfaces, conversion accounting, ABM/EvBC invariants, public APIs, analytical comparisons, and treatment-onset regression checks.
+- `test/abm_general_fixes.jl`
+  - Baseline validation and shared ordering, buffer, density, treatment, and envelope safeguards.
+
+At the time of this guidance update, `test/runtests.jl` does not include these four focused files. Do not describe its result as coverage of those files. Inspect their fixture dependencies and load them explicitly for relevant validation, or include them in the package entry point only as part of an authorised testing change.
 
 - `test/manual_tests.jl`, `test/manual_tests_evbc.jl`, `test/manual_test_helpers.jl`
   - Manual or exploratory test scripts and helpers.
   - These are for use/modification by the user only. Do not add automated tests here. 
 
-Run the package tests with:
-
-```julia
-import Pkg
-Pkg.test()
-```
-
-or from a shell:
+Use the existing isolated local workflow when available:
 
 ```powershell
-julia --project -e "using Pkg; Pkg.test()"
+./run_tests_codex_local.ps1
 ```
+
+The runner uses the repository project/Manifest and `julia_testing_venv` depot, disables automatic package precompilation, enables solver output with `BARCODEMODELS_SUPPRESS_SOLVER=false`, and runs with `--compiled-modules=existing`. If the runner is absent, use those same settings and `julia --compiled-modules=existing --project=. test/runtests.jl`. Do not install dependencies or alter the environment merely to validate a documentation change.
+
+`Pkg.test()` is the package entry point in a configured environment, but is not the default isolated local workflow here. See [../barcode-model-implementation/SKILL.md](../barcode-model-implementation/SKILL.md) for selecting checks, recording coverage, and stopping once acceptance checks pass.
 
 ## Conventions To Preserve
 
@@ -301,4 +317,4 @@ julia --project -e "using Pkg; Pkg.test()"
 - When adding hybrid states, keep state field order, index constants, and `ComponentArray` conversion aligned.
 - When adding ABM states, keep live/dead cell buffer handling consistent with existing helpers.
 - Keep output tables compatible with existing user-facing keys such as `sol_df`, `lin_df`, `sub_lin_df`, and EvBC `lineage_df`.
-- Update README examples or parameter reference when a public model or user-facing parameter changes.
+- Identify affected README examples or parameter references, but update the README only when requested or included in the approved scope.

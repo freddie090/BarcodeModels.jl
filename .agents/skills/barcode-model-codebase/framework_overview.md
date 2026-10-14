@@ -26,7 +26,7 @@ Biological models define:
 * birth processes
 * death processes
 * mutation processes
-* phenotypic switching processes
+* phenotypic transition processes
 * treatment responses
 * fitness relationships
 
@@ -38,7 +38,7 @@ Examples:
 
   * Resistance population model.
   * Represents resistance through predefined phenotypic compartments that exhibit differential survival during treatment.
-  * Cells can only acquire resistance through mutation or phenotypic switching.
+  * Resistance can arise through alternative daughter outcomes at division or independent phenotype conversion, selected by `transition_coupling`.
   * Also possible for resistant cells to exhibit a fitness cost and lose this cost by transitioning to an 'escape' phenotype.
   * This model can therefore either capture simple pre-existing resistance, or more complex models where slower growing phenotypes subsequently give rise to faster growing resistant ('escape') phenotypes.
 
@@ -66,7 +66,7 @@ Examples:
 
   * Combines deterministic (ODE) and stochastic (jump process) simulation approaches.
   * Only keeps track of individual phenotypic compartments.
-  * Increases efficiency by switching between deterministic and stochastic simulation based on population size and transition rate thresholds.
+  * Switches each complete event between deterministic and stochastic simulation using source-population and full effective-activity thresholds. Computational cost depends on the selected settings and resulting jump activity.
   * The cheaper option but unable to provide cell lineage level outputs or outputs that depend on individual cell histories.
 
 * Agent-based model (ABM)
@@ -85,7 +85,7 @@ ResDmg + Hybrid
 ResDmg + ABM
 ```
 
-The biological hypothesis should remain unchanged across model classes. This is important. The two models should lead to the identical behaviour when it comes to the change in phenotypic compartments over time (which both models are able to capture). 
+The biological hypothesis should remain consistent across model classes. Compare implementations only under matching biological formulas, including coupling mode, treatment, density, and resistant fitness-cost settings such as `R_real`. Hybrid approximations and ABM treatment lookup can introduce numerical differences; stochastic runs also have sampling variation. Agreement of selected observables within those limits does not establish identical trajectories or endpoint distributions. See [key_interfaces.md](key_interfaces.md) for the current event contracts.
 
 ---
 
@@ -236,3 +236,5 @@ When proposing a new model:
 5. Preserve separation between biological model, model class and experiment.
 
 New designs should strengthen, rather than weaken, this modular structure.
+
+Preserve existing function locations, script boundaries, workflow order, and explicit phenotype equations when extending the package. Reuse existing abstractions without treating modularity as permission to extract shared engines or relocate functions. Such structural changes require user agreement; scientific readability takes precedence over reducing duplication.

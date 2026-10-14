@@ -8,6 +8,10 @@ Before adding code, decide which layer the proposed functionality belongs to:
 
 Many architectural problems come from putting functionality in the wrong layer. New designs should strengthen the separation between biological model, model class, and experimental design.
 
+These touch points locate responsibilities; they do not authorise relocating existing functions. Preserve current script boundaries, workflow order, and explicit phenotype equations. Reuse existing helpers, keep new model logic local by default, and obtain user agreement before extracting shared engines or adding helper scripts.
+
+For extensions to current models, read [key_interfaces.md](key_interfaces.md) for coupling, event accounting, hybrid boundaries, and ABM/EvBC invariants. Preserve mode propagation through copies and wrappers as well as both public simulation workflows.
+
 For a new hybrid model family:
 
 1. Add parameter and validation logic in `src/types/Parameters.jl`.
@@ -33,7 +37,7 @@ For a new EvBC ABM model family:
 
 1. Start from the matching standard ABM model if one exists.
 2. Add lineage-aware cell fields and state.
-3. Maintain `LineageRecord` creation during birth and phenotype-change events.
+3. Maintain `LineageRecord` creation for births and ancestry. Independent phenotype conversions preserve existing identity and records and create no birth record; later births use the parent's current phenotype.
 4. Extend `src/simulation/simulate_abm_evbc.jl` for lineage output assembly.
 5. Check compatibility with `src/helpers/lineage_utils.jl`.
 6. Add tests for `lineage_df`, extant-cell flags, parent-child relationships, and public lineage utilities.

@@ -8,8 +8,8 @@ test/manual_test_invivo.jl
 test/manual_test_plotting.jl
 test/hybrid_events.jl
 test/hybrid_solver_checks.jl
-tests/transition_coupling.jl
-tests/abm_general_fixes.jl
+test/transition_coupling.jl
+test/abm_general_fixes.jl
 model_specs/
 project_specs/
 projects/
@@ -17,6 +17,4 @@ julia_testing_venv/
 example_project/
 run_tests_codex_local.ps1
 package_code_plans/
-.agents/
-.github/
 .vscode/

@@ -2,7 +2,7 @@
 
 This document describes the coding conventions currently used in `BarcodeModels.jl`. It is intended for agents adding new models or extending existing functionality.
 
-The framework overview is the architectural source of truth. These conventions explain how that architecture is reflected in code.
+Read [framework_overview.md](framework_overview.md) for architectural intent and [key_interfaces.md](key_interfaces.md) for current scientific and numerical contracts. These conventions explain how they are reflected in code. Apply the latest user-agreed scope and corrections when an earlier plan differs.
 
 ## Layer Boundaries
 
@@ -10,6 +10,7 @@ The framework overview is the architectural source of truth. These conventions e
 - Keep experimental design logic separate from biological assumptions.
 - Keep simulation methodology reusable across compatible biological models.
 - Before adding a function, decide whether it belongs to the biological model layer, model-class layer, experimental design layer, or shared helper layer.
+- Preserve existing function locations, script boundaries, workflow order, and explicit phenotype equations. Reuse existing helpers and insert focused local functions as needed. Extracting shared engines, relocating functions, or creating helper scripts requires user agreement; scientific readability takes precedence over reducing duplication.
 
 Common placements:
 
@@ -29,12 +30,13 @@ Common placements:
 - Internal workflow helpers use a leading underscore, such as `_simulate_experiment_abm`.
 - Mutating functions use a trailing `!`, such as `order_cells!`, `birth_mutate_event!`, and `_record_abm_outputs!`.
 - Constants use uppercase names, such as `RESPOP_NS_INDEX` and `RESDMG_DRUG_EFFECTS`.
+- Name coupled daughter outcomes explicitly, such as `S_asymmetric_R_birth`; name independent conversions as `S_to_R_transition`. Use `_activity` for full biological activity, `_rate` for executed jump rate, `_ode` for representation flags, and `!` for mutating handlers. Reserve switching terminology in numerical code for representation changes. Existing ABM birth-helper names may remain.
 
 ## Constructors And Validation
 
 - Parameter keyword constructors should normalise input types to concrete stored types.
 - Convert numeric inputs explicitly with `Float64(...)` or `Int64(...)` where existing structs do so.
-- Normalise symbolic options at construction time. Existing examples include `normalize_respop_drug_effect` and `normalize_resdmg_drug_effect`.
+- Normalise symbolic options at construction time. Existing examples include `normalize_respop_drug_effect`, `normalize_resdmg_drug_effect`, and `normalize_transition_coupling`.
 - Model constructors should validate biological parameters before simulation.
 - Hybrid model constructors currently use `validate_model_params`.
 - ABM constructors currently use stricter validation with `validate_model_params_strict`.
@@ -64,7 +66,8 @@ ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ResPopParams(
 - Keep model-class-specific simulation settings in structs such as `ABMParams` and `SimParams`.
 - Do not add model-specific biological assumptions to `ExperimentParams`.
 - Do not add experiment workflow settings to biological parameter structs.
-- Preserve existing option names where possible, especially public names such as `drug_treatment`, `treat_ons`, `treat_offs`, `Nswitch`, `N_trans_switch`, `save_at`, and `full_sol`.
+- Preserve current public names such as `drug_treatment`, `treat_ons`, `treat_offs`, `transition_coupling`, `Nswitch`, `Aswitch`, `save_at`, and `full_sol`. The deliberate replacement of `N_trans_switch` has no compatibility aliases.
+- Consult [key_interfaces.md](key_interfaces.md) for coupling-dependent parameter units, validation, constructor compatibility, and mode propagation.
 
 ## Hybrid Model Conventions
 
@@ -72,9 +75,10 @@ ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ResPopParams(
 - Hybrid state structs should have a `to_componentarray` method.
 - Keep `ComponentArray` field order aligned with index constants in `src/helpers/common_helpers.jl`.
 - Add new index constants when adding new hybrid state layouts.
-- Keep shared hybrid drug-effect logic in `src/helpers/ode_helpers.jl` when it can be reused.
+- Reuse existing shared drug-effect helpers in `src/helpers/ode_helpers.jl` without extracting new cross-model machinery as part of a model extension.
 - Use callbacks for treatment schedules, passaging, extinction, population limits, and ODE/jump switching, following the existing `ResPop` and `ResDmg` model files.
 - Keep the biological event/rate definitions in model files; keep experiment setup and output assembly in simulation files.
+- Preserve the complete-event classification, update, projection, and donor-availability contracts in [key_interfaces.md](key_interfaces.md).
 
 ## ABM Conventions
 
@@ -86,9 +90,10 @@ ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ResPopParams(
   - `extend_with_dead_cells!`
   - `alive_cells`
 - Increase or validate `Nbuff` rather than silently writing past available dead slots.
-- Put generic ABM mechanics in `src/helpers/abm_helpers.jl` when shared across models.
+- Reuse generic ABM mechanics already in `src/helpers/abm_helpers.jl`; propose any new extraction separately.
 - Keep model-specific ABM events in the model implementation file.
 - Use `!` for event functions and functions that mutate cells, state, counts, or output vectors.
+- Apply the shared buffer and proposal-envelope safeguards in [key_interfaces.md](key_interfaces.md) to both coupling modes and both ABM variants.
 
 ## EvBC And Lineage Conventions
 
@@ -104,6 +109,7 @@ ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ResPopParams(
   - `alive_at_end`
 - Put generic lineage table/tree operations in `src/helpers/lineage_utils.jl`.
 - Keep model-specific lineage creation inside EvBC model files.
+- Preserve conversion identity and birth-record semantics described in [key_interfaces.md](key_interfaces.md).
 
 ## Output Conventions
 
@@ -115,7 +121,7 @@ ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ResPopParams(
   - `lineage_df`: EvBC lineage output.
   - `t` and `u`: compact experiment summaries where used by `simulate_experiment`.
 - `simulate_simple` currently returns compact dictionaries without `t` and `u`.
-- DataFrame column names are part of the user-facing API; update tests and README when changing them.
+- DataFrame column names are part of the user-facing API; update tests when changing them and identify needed README changes. Edit the README only when requested or included in the approved scope.
 - For invalid hybrid inference cases, preserve the existing sentinel-output behaviour unless deliberately redesigning that interface.
 
 ## Error Handling And Assertions
@@ -132,8 +138,13 @@ ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ResPopParams(
 - Keep keyword arguments explicit and readable for parameter construction.
 - Prefer concrete field types in structs, as existing code does.
 - Keep comments short and useful. Use comments to explain non-obvious simulation logic, not obvious assignments.
-- Keep helper functions small when possible, but do not introduce new abstractions unless they reduce real duplication or clarify a framework boundary.
+- Prefer focused functions within existing scripts. Reduced duplication alone does not justify new abstractions or extraction.
 - Avoid broad refactors while adding a model. Match the current local pattern first.
+
+## Hot-Path Performance
+
+- Keep hot rate/activity functions type-inferable. Retain the existing `Val` specialization for fixed `ComponentArray` field names in local birth/death builders; do not replace it with runtime symbol lookup without checking inference and allocations.
+- For a performance change, warm up representative calls before comparing timings and allocations. Separate compilation/GC effects, implementation overhead, and the number of stochastic events selected by the thresholds. Do not infer a speed improvement from an abstraction change alone.
 
 ## Tests And Documentation
 
@@ -141,5 +152,6 @@ ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ResPopParams(
 - Integration tests should exercise both `simulate_experiment` and `simulate_simple` when a new model is public.
 - ABM tests should use small `Nbuff`, `n0`, `Nmax`, and `tmax` values so they run quickly.
 - EvBC tests should check lineage columns and at least one parent-child or extant-cell invariant.
-- Update README examples or parameter references when public APIs, output tables, or user-facing parameters change.
-- Keep agent-facing docs in `agents_temp/` aligned with code changes when they affect extension workflows.
+- Use the bounded validation workflow in [../barcode-model-implementation/SKILL.md](../barcode-model-implementation/SKILL.md); distinguish focused results from full-suite results and sampling uncertainty from numerical sensitivity.
+- Identify README examples or parameter references affected by a change, but update them only when requested or included in the approved scope.
+- Keep relevant guidance in `.agents/skills/` and `.github/agents/` aligned with approved changes; preserve older plans as history with clear supersession notes.
