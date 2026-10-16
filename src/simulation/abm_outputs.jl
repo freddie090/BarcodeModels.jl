@@ -110,3 +110,38 @@ function _record_resdmg_abm_outputs!(kmc_out, cells, rep::Int64, curr_P::Int64,
     update_track_vec_resdmg!(kmc_out, Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec)
 end
 
+"""Phenotype-by-barcode counts for the InVivo ABM, collapsed across EG states."""
+function get_pheno_counts(cells::AbstractVector{InVivoCancerCell}, rep_name::String)
+    live = alive_cells(cells)
+    barcodes = sort(unique(cell.barcode for cell in live))
+    out = DataFrame(bc = barcodes)
+    for label in ("S", "R", "E")
+        out[!, Symbol(rep_name, "_", label)] = [count(cell -> cell.barcode == bc &&
+            (label == "E" ? cell.E : label == "R" ? cell.R && !cell.E : !cell.R && !cell.E), live)
+            for bc in barcodes]
+    end
+    return out
+end
+
+function _invivo_abm_sol_df(out::ResPopInVivoGrowOut; cond::String, rep::Int64)
+    return DataFrame(t = out.tvec,
+        nS_EG0 = out.S_EG0_vec, nS_EG1 = out.S_EG1_vec,
+        nR_EG0 = out.R_EG0_vec, nR_EG1 = out.R_EG1_vec,
+        nE_EG0 = out.E_EG0_vec, nE_EG1 = out.E_EG1_vec,
+        nS = out.Svec, nR = out.Rvec, nE = out.Evec,
+        n_EG0 = out.S_EG0_vec+out.R_EG0_vec+out.E_EG0_vec,
+        n_EG1 = out.S_EG1_vec+out.R_EG1_vec+out.E_EG1_vec,
+        N = out.Nvec, cond = cond, rep = rep, passage = out.Pvec)
+end
+
+function _record_invivo_abm_readout!(cells, name, lin_dfs, pheno_dfs, sub_dfs;
+    full_pheno_bc::Bool = false, sub_sample_cells::Bool = false, K::Int64 = 0)
+    live = alive_cells(cells)
+    push!(lin_dfs, get_counts(live, name))
+    full_pheno_bc && push!(pheno_dfs, get_pheno_counts(live, name))
+    if sub_sample_cells
+        sampled = K <= length(live) ? sample(live, K, replace = false) : live
+        push!(sub_dfs, get_counts(sampled, name))
+    end
+    return nothing
+end

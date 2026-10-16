@@ -19,6 +19,8 @@ Dispatch is class-based:
 - Passing a Hybrid-class model routes to the hybrid simulation pipeline.
 - Passing an Agent-Based-class model routes to the ABM simulation pipeline.
 
+`ResPopInVivo` is available in both classes, extending ResPop with in vivo-specific engraftment parameters and implantation/passaging behaviour. See [InVivo functionality](#invivo-functionality) for details.
+
 
 ## Current Models
 
@@ -103,7 +105,7 @@ Drug exposure is modelled through a time-dependent effective concentration $D_c(
 This method is intended for quick model implementation without the full replicate/passaging experiment workflow. This version is useful for testing and debugging and for generating single-run outputs for a given model and parameter set.
 
 Features of the simple simulation layer include:
-- Shared dispatch across model families (`ResPop`, `ResDmg`, ABM variants, and EvBC ABM variants).
+- Shared dispatch across model families (`ResPop`, `ResDmg`, InVivo variants, and EvBC ABM variants).
 - Input via `SimpleSimParams` for one-population runs with optional treatment windows.
 - Compact outputs for trajectory and barcode summaries (`sol_df`; plus `lin_df` for ABM classes).
 - EvBC support returns lineage outputs (`lineage_df`) with ground-truth relatedness metadata.
@@ -114,6 +116,8 @@ Features of the simple simulation layer include:
 - `sol_df`: time-series population output table for the simulated run.
 - `lin_df`: barcode abundance table for ABM model classes.
 - `lineage_df`: EvBC-only ground-truth lineage table with parent-child relationships and lineage metadata.
+
+InVivo simple simulations return EG-stratified population counts and support optional ABM phenotype-by-barcode outputs. Engraftment, control replicates and pool splitting belong to the full experiment workflow.
 
 Runnable examples are provided in `Quick start`.
 
@@ -140,6 +144,8 @@ Features of the experimental design include:
 - `u`: summary vector of population sizes aligned to `t` (returned unless `just_lin=true`).
 - `sub_lin_df`: optional subsampled barcode table when `sub_sample_cells=true`.
 - `lineage_df`: EvBC-only ground-truth lineage table with node-level lineage metadata.
+
+InVivo experiments also return engraftment counts and condition labels, with endpoint summaries for each condition/replicate. See [InVivo outputs](#invivo-outputs-and-how-to-access-them) for their output conventions.
 
 
 ## Quick start
@@ -295,7 +301,7 @@ independent = ResPopParams(b=0.8, d=0.2, mu=0.01, sig=0.02, del=0.1,
 
 ## Parameter reference
 
-All ResPop and ResDmg model constructors require `b > d` for positive baseline growth. Effective growth under treatment can still be negative.
+All ResPop, ResDmg and ResPopInVivo model constructors require `b > d` for positive baseline growth. Effective growth under treatment can still be negative.
 
 ### `ResPopParams`
 Core parameters for the ResPop model family (hybrid and ABM).
@@ -315,7 +321,7 @@ Core parameters for the ResPop model family (hybrid and ABM).
 | `drug_effect` | `Symbol` (`:d`) | Drug action mode: death-only (`:d`), birth-only (`:b`), combined (`:c`). | Must be one of `:d`, `:b`, `:c`. |
 | `transition_coupling` | `Symbol` (`:birth_coupled`) | Division outcomes or independent conversion of existing cells. | `:birth_coupled` or `:independent_rate`; exact string equivalents also accepted. |
 
-`R_real` controls how the resistant fitness cost `del` is realised in **all Hybrid, ABM, and EvBC models**, for both ResPop and ResDmg. The default is `"l"` in every class. Set it when calling either simulation API:
+`R_real` controls how the resistant fitness cost `del` is realised in **all Hybrid, ABM, and EvBC models**, including ResPopInVivo. The default is `"l"` in every class. Set it when calling either simulation API:
 
 ```julia
 result = simulate_experiment(model, exp; R_real = "l")
@@ -329,6 +335,19 @@ simple = simulate_simple(model, sim; R_real = "d")
 | `"d"` | `b` | `d+(b-d)*del` | Increase death only. |
 
 These are undamaged R rates before treatment, density scaling, and phenotype transitions. All three give the same baseline birth-minus-death rate, `(b-d)*(1-del)`, but different turnover and, with birth-coupled switching, different daughter-production rates. ResPop E uses baseline birth/death rates; ResDmg damaged states do not divide and have death rate `d + Dc` before density scaling. The selected option applies throughout expansion, replicate growth, and passaging.
+
+### `ResPopInVivoParams`
+
+Core parameters for the ResPopInVivo model family (hybrid and ABM). ResPopInVivo uses the ResPop biological parameters plus a fixed engraftment phenotype (`EG0` or `EG1`).
+
+| Parameter | Type (default) | Meaning | Constraints |
+|---|---|---|---|
+| `b, d, rho, mu, sig, del, al, Dc, k, psi, drug_effect, transition_coupling` | as in `ResPopParams` | Same growth, treatment and phenotype-transition meanings as ResPop. | Shared constraints from `ResPopParams`; `transition_coupling = :birth_coupled` by default. |
+| `fEG1` | `Float64` (required) | Initial fraction with the EG1 phenotype, assigned independently of resistance. | Finite and `0 ≤ fEG1 ≤ 1`; a cell fraction in normal expansion, or an observed-barcode fraction with `split_after_barcoding=true`. |
+| `pEG` | `Float64` (required) | Probability that an EG1 cell survives implantation or passage engraftment. | Finite and `0 ≤ pEG ≤ 1`. |
+| `sEG` | `Float64` (required) | Relative engraftment disadvantage of EG0 cells, whose survival probability is `pEG*(1-sEG)`. | Finite and `0 ≤ sEG ≤ 1`. |
+
+With `split_after_barcoding=true`, `rho` also refers to a fraction of unique observed barcodes rather than cells. The engraftment phenotype is inherited at birth and remains fixed during S/R/E transitions.
 
 ### `ResDmgParams`
 Core parameters for the ResDmg model family (hybrid and ABM). ResDmg uses `S, DS, DR, R` states and does not include an escape (`E`) transition.
@@ -362,13 +381,15 @@ Barcode initialization supports three modes: default sequential IDs, generated s
 | `skew_lib` | `Bool` (`false`) | Enable skewed barcode library initialization. | ABM-only feature. |
 | `use_lib_probs` | `Bool` (`false`) | Enable caller-supplied barcode library probabilities. | Mutually exclusive with `skew_lib`. |
 | `bc_unif` | `Float64` (`0.0`) | Skew/uniformity control for barcodes. | Used when `skew_lib=true`. |
-| `Nbc` | `Int64` (`0`) | Number of barcodes in skewed library mode. | Used when `skew_lib=true`. |
+| `Nbc` | `Int64` (`0`) | Number of barcodes in the library. | Used when `skew_lib=true` or `use_lib_probs=true`. |
 | `bc_probs` | `Vector{Float64}` (`Float64[]`) | Library barcode probabilities used for direct barcode sampling. | Used when `use_lib_probs=true`; must have length `Nbc` and sum to 1. |
 | `sub_sample_cells` | `Bool` (`false`) | Enable per-passage subsampling outputs. | ABM-only output option. |
 | `K` | `Int64` (`0`) | Subsample size when `sub_sample_cells=true`. | Must be consistent with live-cell count. |
+| `split_after_barcoding` | `Bool` (`false`) | Split the barcoded starting pool directly into InVivo replicates, without expansion. | InVivo ABM experiments only; requires `use_lib_probs=true` and valid `Nbc`/`bc_probs`. |
+| `full_pheno_bc` | `Bool` (`false`) | Return S/R/E counts for each barcode in `pheno_bc_df`. | InVivo ABM only; counts combine EG0 and EG1. |
 
 ### `ExperimentParams`
-Experiment design shared by both model families.
+Experiment design shared by the model families. The `inc_control` and `inc_pot` settings apply only to InVivo experiments.
 
 | Parameter | Type (default) | Meaning | Constraints / notes |
 |---|---|---|---|
@@ -385,13 +406,19 @@ Experiment design shared by both model families.
 | `Nswitch` | `Int64` (required) | Minimum source population for deterministic treatment of each hybrid event. | Positive integer. |
 | `Aswitch` | `Float64` (`1000.0`) | Minimum full effective event rate for deterministic treatment, in events per simulation time unit (events/day when rates use days). | Finite and `> 0`. |
 | `save_at` | `Float64` (`0.5`) | Hybrid solver save interval. | `> 0`. |
-| `n_rep` | `Int64` (`4`) | Number of replicate experiments. | `> 0`. |
+| `n_rep` | `Int64` (`4`) | Number of replicate experiments. | `> 0`; applies per condition in InVivo experiments. |
 | `drug_treatment` | `Bool` (`true`) | Whether treatment is applied in main experiment runs. | Boolean. |
 | `full_sol` | `Bool` (`false`) | Return full per-time simulated trajectory table. | Boolean. |
+| `inc_control` | `Bool` (`false`) | Include untreated controls alongside treated InVivo replicates. | InVivo only; `drug_treatment=false` produces controls only. |
+| `inc_pot` | `Bool` (`false`) | Include the common pool in InVivo outputs. | InVivo only; `POT` population rows and, for ABM, `POT_P0` barcode columns. |
+
+Simulation keyword overrides take precedence over stored settings, e.g. `simulate_experiment(model, exp; inc_control=true)`.
 
 ### Hybrid event switching
 
 `ResPop` and `ResDmg` classify each division outcome, death, damage, and repair event separately. An event is deterministic only when its source population is at least `Nswitch` **and** its full effective rate is at least `Aswitch`; otherwise it uses a stochastic jump. Full birth/death rates include current treatment, density, fitness, and (in coupled mode) division-outcome adjustments. Independent phenotype conversions use the values described above without birth or density scaling. Biological rates are independent of numerical representation. `SimpleSimParams` defaults to `Nswitch = 100` and `Aswitch = 1000.0`.
+
+`ResPopInVivo` applies the same criteria to each event within each EG stratum, using its EG-specific source population and full effective rate.
 
 Modes are initialized before solving and refreshed at accepted solver steps and after jumps, treatment updates, passaging, and concentration clamps. Check switching thresholds against fully stochastic runs when extinction or founder-arrival timing matters.
 
@@ -399,10 +426,14 @@ Modes are initialized before solving and refreshed at accepted solver steps and 
 ## Key API
 - `ResPopParams`: ResPop biological parameters.
 - `ResDmgParams`: ResDmg biological parameters.
+- `ResPopInVivoParams`: ResPop biology with engraftment phenotype parameters.
 - `ResPop`: hybrid ODE+jump model.
 - `ResDmg`: hybrid ODE+jump model with damaged compartment.
 - `ResPop_ABM`: agent-based model.
 - `ResDmg_ABM`: agent-based model with damaged compartment.
+- `ResPopInVivo`: hybrid model with fixed engraftment phenotypes.
+- `ResPopInVivo_ABM`: agent-based model with fixed engraftment phenotypes.
+- `engraftment_selection`: sample engraftment survivors from EG-tagged cells or EG-stratified counts.
 - `ABMParams`: ABM-specific configuration.
 - `ExperimentParams`: experiment-level design parameters.
 - `simulate_experiment(model, exp; kwargs...)`: run simulation for either model family.
@@ -419,11 +450,100 @@ Modes are initialized before solving and refreshed at accepted solver steps and 
 - `src/models/res_dmg.jl`: hybrid ResDmg model core simulation logic.
 - `src/models/res_pop_abm.jl`: ABM model core simulation logic.
 - `src/models/res_dmg_abm.jl`: ABM ResDmg model core simulation logic.
+- `src/models/res_pop_in_vivo.jl`: hybrid InVivo model core simulation logic.
+- `src/models/res_pop_in_vivo_abm.jl`: ABM InVivo model core simulation logic.
 - `src/simulation/simulate.jl`: experiment orchestration drivers and API dispatch.
 - `test/runtests.jl`: integration tests.
 
 ## Tests
 Run tests with: `julia --project -e "using Pkg; Pkg.test()"`
+
+## InVivo Functionality
+
+### Model features
+
+`ResPopInVivo` extends ResPop with a fixed, heritable engraftment phenotype. Each S/R/E phenotype is divided into EG0 and EG1 populations, giving six compartments. EG affects engraftment probability only; growth, drug response, resistant fitness costs and both phenotypic transition modes follow ResPop.
+
+The following model classes use `ResPopInVivoParams`:
+
+- Hybrid class: `ResPopInVivo(params)`
+- Agent-Based class: `ResPopInVivo_ABM(params; abm=ABMParams())`
+
+Both classes support `simulate_experiment(model, exp)` and `simulate_simple(model, sim)`. InVivo uses static barcodes in the ABM class; there is no InVivo EvBC variant.
+
+### Expansion, implantation and passaging
+
+Normal experiments begin with scalar or staged expansion. Initial resistant and EG1 cell counts are rounded from `n0*rho` and `n0*fEG1`, and assigned independently. Bottlenecks between expansion stages sample cells without engraftment selection.
+
+After expansion, replicate batches are sampled without replacement from one common pool. With `inc_control=true`, untreated controls (`CO`) are sampled and run before treated replicates (`DT`); `n_rep` applies to each condition. With `drug_treatment=false`, only controls are produced. The pool must contain enough cells for all replicate batches before engraftment.
+
+Engraftment selection is applied after implantation and every actual passage:
+
+- EG1 cells survive independently with probability `pEG`.
+- EG0 cells survive independently with probability `pEG*(1-sEG)`.
+- Unsuccessful grafts are not replenished; zero survivors represent extinction.
+
+At each passage, cells are sampled to `Nseed` before engraftment selection. Reaching `Nmax` triggers an available passage immediately; otherwise it stops that replicate. Treatment windows remain on continuous experiment time, including across early passages. Vector `tmax` values apply by replicate within each condition and require `t_Pass=Float64[]`.
+
+### Direct splitting after barcoding (ABM only)
+
+Set `split_after_barcoding=true` to skip expansion and split the barcoded starting pool directly into replicate batches. This mode requires an explicit barcode library (`use_lib_probs=true`, with `Nbc` and `bc_probs`).
+
+Resistance and EG1 status are assigned independently to uniformly selected subsets of the unique barcodes observed in the starting pool. `rho` and `fEG1` therefore specify barcode fractions in this mode, and cells sharing a barcode begin with the same resistance and EG status. Replicate sampling and engraftment then proceed as above.
+
+### InVivo outputs and how to access them
+
+`simulate_experiment` returns a `Dict{String, Any}` with population, condition and engraftment outputs:
+
+- `"engraft_df"`: realised surviving counts at implantation (`passage=1`) and subsequent passages, with columns `cond, rep, passage, N_engraft, nEG0_engraft, nEG1_engraft`.
+- `"t"`, `"u"`, `"cond"`, `"rep"`: aligned endpoint time, total population, condition and replicate vectors. Each entry describes one condition/replicate endpoint, rather than the observation times in `t_keep`.
+- `"sol_df"`: population trajectories with columns `t, nS_EG0, nS_EG1, nR_EG0, nR_EG1, nE_EG0, nE_EG1, nS, nR, nE, n_EG0, n_EG1, N, cond, rep, passage`.
+
+Hybrid experiments include replicate trajectories when `full_sol=true`. With `inc_pot=true`, `sol_df` also contains expansion-pool rows labelled `cond="POT", rep=0, passage=0`; when `full_sol=false`, only those pool rows are included.
+
+ABM experiments additionally return:
+
+- `"lin_df"`: barcode abundance table, with `bc` and condition/replicate/passage columns such as `CO1_P1` and `DT1_P1`.
+- `"sub_lin_df"`: optional subsampled barcode counts when `sub_sample_cells=true`, using up to `K` surviving cells per readout.
+- `"pheno_bc_df"`: optional phenotype-by-barcode counts when `full_pheno_bc=true`, with columns such as `DT1_P1_S`, `DT1_P1_R`, `DT1_P1_E`. Counts combine EG0 and EG1.
+
+ABM population trajectories are returned unless `just_lin=true`, which also omits the endpoint vectors. `engraft_df` and the requested barcode tables remain available. With `inc_pot=true`, the pool contributes `POT` population rows and `POT_P0` barcode columns; `full_pheno_bc=true` also adds `POT_P0_S`, `POT_P0_R`, `POT_P0_E`. Pool outputs are available with normal expansion or direct splitting.
+
+Simple simulations return `sol_df` with the same population count columns, without experiment condition/replicate labels (and without passage labels for hybrid runs). The ABM class also returns endpoint barcode counts and the optional phenotype/subsample tables; `just_lin=true` omits `sol_df`. Simple simulations do not apply implantation or passage engraftment.
+
+### Minimal InVivo usage example
+
+Using the experimental design `exp` from `Quick start`:
+
+```julia
+params_invivo = ResPopInVivoParams(
+    b = 0.893,
+    d = 0.200,
+    rho = 0.1,
+    mu = 0.01,
+    sig = 0.0,
+    del = 0.0,
+    al = 0.0,
+    Dc = 1.4,
+    k = 0.5,
+    psi = 0.0,
+    drug_effect = :c,
+    fEG1 = 0.2,
+    pEG = 0.8,
+    sEG = 0.5
+)
+
+model_invivo = ResPopInVivo_ABM(params_invivo;
+    abm = ABMParams(full_pheno_bc=true))
+out = simulate_experiment(model_invivo, exp; inc_control=true, inc_pot=true)
+
+out["engraft_df"]
+out["pheno_bc_df"]
+
+# The same biological parameters and design can be used for the hybrid class
+out_hybrid = simulate_experiment(ResPopInVivo(params_invivo), exp;
+    inc_control=true, inc_pot=true, full_sol=true)
+```
 
 ## Evolvable Barcode (EvBC) Functionality
 

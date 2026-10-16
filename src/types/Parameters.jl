@@ -251,12 +251,15 @@ struct ABMParams
     bc_probs::Vector{Float64}
     sub_sample_cells::Bool
     K::Int64
+    split_after_barcoding::Bool
+    full_pheno_bc::Bool
 end
 
 function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
                    skew_lib=false, use_lib_probs=false, bc_unif=0.0, Nbc=0,
                    bc_probs=Float64[],
-                   sub_sample_cells=false, K=0)
+                   sub_sample_cells=false, K=0, split_after_barcoding=false,
+                   full_pheno_bc=false)
     bc_probs_vec = Vector{Float64}(bc_probs)
     validate_abm_params(skew_lib = Bool(skew_lib), use_lib_probs = Bool(use_lib_probs),
                         Nbc = Int64(Nbc), bc_probs = bc_probs_vec)
@@ -271,7 +274,9 @@ function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
         Int64(Nbc),
         bc_probs_vec,
         Bool(sub_sample_cells),
-        Int64(K)
+        Int64(K),
+        Bool(split_after_barcoding),
+        Bool(full_pheno_bc)
     )
 end
 
@@ -325,6 +330,8 @@ struct ExperimentParams
     n_rep::Int64
     drug_treatment::Bool
     full_sol::Bool
+    inc_control::Bool
+    inc_pot::Bool
 end
 
 struct SimpleSimParams
@@ -461,7 +468,7 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                           treat_ons, treat_offs, t_keep, Nswitch,
                           Aswitch=1000.0,
                           save_at=0.5, n_rep=4, drug_treatment=true,
-                          full_sol=false)
+                          full_sol=false, inc_control=false, inc_pot=false)
     validate_experiment_params(
         n0 = n0,
         t_exp = t_exp,
@@ -503,7 +510,72 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         Float64(save_at),
         Int64(n_rep),
         Bool(drug_treatment),
-        Bool(full_sol)
+        Bool(full_sol),
+        Bool(inc_control),
+        Bool(inc_pot)
     )
 end
 
+# Preserve the pre-InVivo positional constructors, including their conversions.
+ABMParams(Nbuff, t_frac, dt_save_at, skew_lib, use_lib_probs, bc_unif, Nbc,
+    bc_probs, sub_sample_cells, K) =
+    ABMParams(Nbuff, t_frac, dt_save_at, skew_lib, use_lib_probs, bc_unif, Nbc,
+        bc_probs, sub_sample_cells, K, false, false)
+
+ExperimentParams(n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc, treat_ons, treat_offs,
+    t_keep, Nswitch, Aswitch, save_at, n_rep, drug_treatment, full_sol) =
+    ExperimentParams(n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc, treat_ons, treat_offs,
+        t_keep, Nswitch, Aswitch, save_at, n_rep, drug_treatment, full_sol, false, false)
+
+"""ResPop biology with a fixed heritable engraftment phenotype."""
+struct ResPopInVivoParams
+    b::Float64
+    d::Float64
+    rho::Float64
+    mu::Float64
+    sig::Float64
+    del::Float64
+    al::Float64
+    Dc::Float64
+    k::Float64
+    psi::Float64
+    drug_effect::Symbol
+    fEG1::Float64
+    pEG::Float64
+    sEG::Float64
+    transition_coupling::Symbol
+end
+
+function ResPopInVivoParams(; b, d, rho = 0.0, mu, sig, del, al, Dc, k, psi,
+    drug_effect = "d", fEG1, pEG, sEG, transition_coupling = :birth_coupled)
+    return ResPopInVivoParams(Float64(b), Float64(d), Float64(rho), Float64(mu),
+        Float64(sig), Float64(del), Float64(al), Float64(Dc), Float64(k), Float64(psi),
+        normalize_respop_drug_effect(drug_effect), Float64(fEG1), Float64(pEG),
+        Float64(sEG), normalize_transition_coupling(transition_coupling))
+end
+
+# The original branch's positional parameter constructor defaults to birth coupling.
+ResPopInVivoParams(b, d, rho, mu, sig, del, al, Dc, k, psi, drug_effect, fEG1, pEG, sEG) =
+    ResPopInVivoParams(; b, d, rho, mu, sig, del, al, Dc, k, psi, drug_effect, fEG1, pEG, sEG)
+
+function _respop_params_from_invivo(params::ResPopInVivoParams)
+    return ResPopParams(b = params.b, d = params.d, rho = params.rho, mu = params.mu,
+        sig = params.sig, del = params.del, al = params.al, Dc = params.Dc, k = params.k,
+        psi = params.psi, drug_effect = params.drug_effect,
+        transition_coupling = params.transition_coupling)
+end
+
+function validate_model_params(params::ResPopInVivoParams)
+    validate_model_params(_respop_params_from_invivo(params))
+    for name in (:fEG1, :pEG, :sEG)
+        value = getproperty(params, name)
+        isfinite(value) && 0.0 <= value <= 1.0 || error("$(name) must be finite and between 0 and 1.")
+    end
+    return params
+end
+
+function validate_model_params_strict(params::ResPopInVivoParams)
+    validate_model_params(params)
+    params.psi >= 0.0 || error("psi must be between 0 and 1.")
+    return params
+end

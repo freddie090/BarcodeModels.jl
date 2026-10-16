@@ -65,3 +65,42 @@ function find_closest(x, xvec)
         return dist_prev < dist_next ? idx - 1 : idx
     end
 end
+
+const RESPOP_INVIVO_GAM_INDEX = 1
+const RESPOP_INVIVO_NS_EG0_INDEX = 2
+const RESPOP_INVIVO_NS_EG1_INDEX = 3
+const RESPOP_INVIVO_NR_EG0_INDEX = 4
+const RESPOP_INVIVO_NR_EG1_INDEX = 5
+const RESPOP_INVIVO_NE_EG0_INDEX = 6
+const RESPOP_INVIVO_NE_EG1_INDEX = 7
+const RESPOP_INVIVO_PASS_INDEX = 8
+
+respop_invivo_total_population(u) = u[2] + u[3] + u[4] + u[5] + u[6] + u[7]
+
+function _validate_engraftment_probabilities(pEG, sEG)
+    isfinite(pEG) && 0.0 <= pEG <= 1.0 || error("pEG must be finite and between 0 and 1.")
+    isfinite(sEG) && 0.0 <= sEG <= 1.0 || error("sEG must be finite and between 0 and 1.")
+    return nothing
+end
+
+"""Thin living EG-tagged cells independently; return survivors and realized counts."""
+function engraftment_selection(cells::AbstractVector, pEG::Real, sEG::Real)
+    _validate_engraftment_probabilities(pEG, sEG)
+    keep = [cell.alive && rand() < (cell.EG ? pEG : pEG * (1-sEG)) for cell in cells]
+    selected = cells[keep]
+    nEG1 = count(cell -> cell.EG, selected)
+    return selected, Dict("N_engraft" => length(selected),
+        "nEG0_engraft" => length(selected)-nEG1, "nEG1_engraft" => nEG1)
+end
+
+"""Binomial engraftment thinning of nonnegative integer-like EG-stratified counts."""
+function engraftment_selection(nEG0::AbstractVector, nEG1::AbstractVector, pEG::Real, sEG::Real)
+    _validate_engraftment_probabilities(pEG, sEG)
+    length(nEG0) == length(nEG1) || error("nEG0 and nEG1 must have matching lengths.")
+    all(x -> isfinite(x) && x >= 0, nEG0) || error("nEG0 entries must be finite and nonnegative.")
+    all(x -> isfinite(x) && x >= 0, nEG1) || error("nEG1 entries must be finite and nonnegative.")
+    eg0 = [rand(Binomial(round(Int, n), pEG*(1-sEG))) for n in nEG0]
+    eg1 = [rand(Binomial(round(Int, n), pEG)) for n in nEG1]
+    return eg0, eg1, Dict("N_engraft" => sum(eg0)+sum(eg1),
+        "nEG0_engraft" => sum(eg0), "nEG1_engraft" => sum(eg1))
+end

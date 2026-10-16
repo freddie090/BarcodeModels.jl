@@ -26,3 +26,7 @@ example_project/
 run_tests_codex_local.ps1
 package_code_plans/
 .vscode/
+test/invivo_baseline.jl
+test/invivo_import.jl
+test/invivo_validation/
+test/invivo_*.log

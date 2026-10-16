@@ -104,3 +104,44 @@ function _with_drug_effect(model::ResDmg, de::Symbol)
     return ResDmg(params_eff)
 end
 
+function _copy_respop_invivo_params(params::ResPopInVivoParams;
+    rho = params.rho, al = params.al, drug_effect = params.drug_effect,
+    fEG1 = params.fEG1, pEG = params.pEG, sEG = params.sEG)
+    return ResPopInVivoParams(b = params.b, d = params.d, rho = rho, mu = params.mu,
+        sig = params.sig, del = params.del, al = al, Dc = params.Dc, k = params.k,
+        psi = params.psi, drug_effect = drug_effect, fEG1 = fEG1, pEG = pEG, sEG = sEG,
+        transition_coupling = params.transition_coupling)
+end
+
+function _with_drug_effect(model::ResPopInVivo, de::Symbol)
+    de == model.params.drug_effect && return model
+    return ResPopInVivo(_copy_respop_invivo_params(model.params; drug_effect = de))
+end
+
+function _with_drug_effect(model::ResPopInVivo_ABM, de::Symbol)
+    de == model.params.drug_effect && return model
+    return ResPopInVivo_ABM(_copy_respop_invivo_params(model.params; drug_effect = de); abm = model.abm)
+end
+
+function _experiment_condition_design(drug_treatment::Bool, inc_control::Bool, n_rep::Int64)
+    design = NamedTuple{(:cond, :treat, :rep), Tuple{String, Bool, Int64}}[]
+    if inc_control || !drug_treatment
+        append!(design, [(cond = "CO", treat = false, rep = rep) for rep in 1:n_rep])
+    end
+    if drug_treatment
+        append!(design, [(cond = "DT", treat = true, rep = rep) for rep in 1:n_rep])
+    end
+    return design
+end
+
+function _push_invivo_engraftment!(rows, cond, rep, passage, stats)
+    push!(rows, (cond = cond, rep = rep, passage = passage, N_engraft = stats["N_engraft"],
+        nEG0_engraft = stats["nEG0_engraft"], nEG1_engraft = stats["nEG1_engraft"]))
+    return nothing
+end
+
+function _invivo_engraftment_df(rows)
+    isempty(rows) || return DataFrame(rows)
+    return DataFrame(cond = String[], rep = Int[], passage = Int[], N_engraft = Int[],
+        nEG0_engraft = Int[], nEG1_engraft = Int[])
+end
