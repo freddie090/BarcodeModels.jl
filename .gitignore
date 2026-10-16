@@ -13,6 +13,7 @@ test/abm_general_fixes.jl
 test/drug_effect_boundaries.jl
 test/abm_population_cap.jl
 test/biological_rate_validation.jl
+test/resistant_fitness_options.jl
 test/lineage_ids.jl
 test/abm_general_fixes.jl
 test/abm_organization.jl

@@ -69,6 +69,8 @@ For performance changes, consult [../barcode-model-codebase/coding_conventions.m
 
 Identify README changes needed for public behaviour, but edit the README only when requested or included in the approved scope. Keep relevant agent/skill guidance aligned with approved changes without appending routine implementation details to user documentation.
 
+Treat the README as documentation of the current package version only. Describe current behaviour, defaults, constraints and usage directly; do not add historical comparisons, "previously" wording, migration narratives or a record of changes. Keep development history in implementation records, plans or Git history.
+
 ## Expected Outputs
 
 When implementing new functionality, provide:

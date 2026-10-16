@@ -45,6 +45,8 @@ Select acceptance checks before implementation and follow the implementation ski
 
 Identify README changes needed, but edit the README only when requested or included in the approved scope. For performance changes, preserve hot-path inference and existing `Val` specialization and compare warmed timings/allocations before making speed claims.
 
+The README documents the current package version only. Describe current behaviour, defaults, constraints and usage without historical comparisons, "previously" wording, migration narratives or change tracking. Keep development history in implementation records, plans or Git history.
+
 Your final output should include:
 
 * Files modified.

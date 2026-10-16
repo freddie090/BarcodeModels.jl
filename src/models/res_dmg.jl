@@ -10,7 +10,8 @@ end
 ResDmg(; kwargs...) = ResDmg(ResDmgParams(; kwargs...))
 
 """Build full biological rates and event representation flags, with baseline rates."""
-function build_component_params(params::ResDmgParams)
+function build_component_params(params::ResDmgParams; R_real = "l")
+    R_real = normalize_R_real(R_real)
     bS = params.b
     dS = params.d
 
@@ -20,8 +21,13 @@ function build_component_params(params::ResDmgParams)
     bDR = 0.0
     dDR = params.d + params.Dc
 
-    bR = params.b * (1 - params.del)
-    dR = params.d * (1 - params.del)
+    bR, dR = if R_real == "b"
+        (params.b - (params.b - params.d) * params.del, params.d)
+    elseif R_real == "d"
+        (params.b, params.d + (params.b - params.d) * params.del)
+    else
+        (params.b * (1 - params.del), params.d * (1 - params.del))
+    end
 
     phenotype_modes = params.transition_coupling === :birth_coupled ? (
         S_asymmetric_R_birth_ode = 0.0,
@@ -73,23 +79,16 @@ function run_model_core_hybrid(model::ResDmg, state::ResDmgState, sim::SimParams
         treat_offs = sim.treat_offs,
         save_at = sim.save_at,
         treat = treat,
-        Aswitch = sim.Aswitch
+        Aswitch = sim.Aswitch,
+        R_real = sim.R_real
     )
 
     params = model.params
     independent = params.transition_coupling === :independent_rate
     de = params.drug_effect
 
-    if de == :b
-        bR = params.b * (1 - params.del)
-        psi_scale = 1 - params.psi
-        params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
-        if psi_scale > 0.0
-            params.Dc <= (bR / psi_scale) || error("When drug_effect == :b, Dc*(1-psi) must be <= b*(1-del) to keep resistant birth non-negative. Use drug_effect == :c if stronger drug effects are intended.")
-        end
-    end
-
-    p, bS, dS, bDS, dDS, bDR, dDR, bR, dR = build_component_params(params)
+    validate_resistant_birth_drug_effect(params, sim_eff.R_real)
+    p, bS, dS, bDS, dDS, bDR, dDR, bR, dR = build_component_params(params; R_real = sim_eff.R_real)
 
     u0 = to_componentarray(state)
     tspan = (sim_eff.t0, sim_eff.tmax)

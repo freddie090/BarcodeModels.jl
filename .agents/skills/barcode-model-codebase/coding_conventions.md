@@ -157,4 +157,5 @@ ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ResPopParams(
 - EvBC tests should check lineage columns and at least one parent-child or extant-cell invariant.
 - Use the bounded validation workflow in [../barcode-model-implementation/SKILL.md](../barcode-model-implementation/SKILL.md); distinguish focused results from full-suite results and sampling uncertainty from numerical sensitivity.
 - Identify README examples or parameter references affected by a change, but update them only when requested or included in the approved scope.
+- Document only the current package version in the README: current behaviour, defaults, constraints and usage. Do not include historical comparisons, "previously" wording, migration narratives or change tracking; keep development history in implementation records, plans or Git history.
 - Keep relevant guidance in `.agents/skills/` and `.github/agents/` aligned with approved changes; preserve older plans as history with clear supersession notes.

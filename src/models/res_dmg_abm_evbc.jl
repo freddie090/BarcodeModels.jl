@@ -27,9 +27,7 @@ function _core_grow_kill_abm!(
     cells = state.cells
     independent = params.transition_coupling === :independent_rate
     de = sim.drug_effect
-    if de == :b
-        @assert params.Dc <= params.b "When drug_effect = :b, Dc must be <= b."
-    end
+    validate_resistant_birth_drug_effect(params, sim.R_real; drug_effect = de)
 
     lam = params.b - params.d
     drug_concs = nothing

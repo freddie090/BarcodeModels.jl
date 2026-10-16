@@ -320,6 +320,8 @@ Naming note: existing concrete Julia type names such as `ResPop_ABM` encode both
   - Development checks for immediate initial/cap-reaching ABM stops, phenotype/lineage output and cap-triggered passage timing.
 - `test/biological_rate_validation.jl`
   - Development checks for finite/nonnegative biological rates, valid zero boundaries, coupling constraints and hybrid inference sentinels.
+- `test/resistant_fitness_options.jl`
+  - Development checks for shared R_real defaults/options, hybrid analytical rates and event drift, option-dependent birth-only drug limits, and public API propagation.
 
 - `test/hybrid_events.jl` and `test/hybrid_solver_checks.jl`
   - Focused hybrid accounting, classification, fractional-boundary, analytical, and solver checks; these may be local/ignored.

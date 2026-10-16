@@ -1,5 +1,6 @@
 function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwargs...)
     params = model.params
+    R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
     save_at = _kw(kwargs, :save_at, exp.save_at)
     n_rep = _kw(kwargs, :n_rep, exp.n_rep)
     drug_treatment = _kw(kwargs, :drug_treatment, exp.drug_treatment)
@@ -29,6 +30,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
     n_pass_eff = length(normalize_t_pass(exp.t_Pass)) + 1
 
     n_pop_obsv = n_rep * ((run_IC * 2) + length(exp.t_keep) + n_pass_eff) + (run_colony * 1)
+    validate_resistant_birth_drug_effect(params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
 
     if params.psi < 0.0
@@ -56,6 +58,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
                 Cc = exp.Cc,
                 Nswitch = exp.Nswitch,
                 Aswitch = exp.Aswitch,
+                R_real = R_real,
                 treat_ons = exp.treat_ons,
                 treat_offs = exp.treat_offs,
                 save_at = save_at,
@@ -89,6 +92,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
             Cc = exp.Cc,
             Nswitch = exp.Nswitch,
             Aswitch = exp.Aswitch,
+            R_real = R_real,
             treat_ons = exp.treat_ons,
             treat_offs = exp.treat_offs,
             save_at = save_at,
@@ -114,6 +118,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
             Cc = exp.Cc,
             Nswitch = exp.Nswitch,
             Aswitch = exp.Aswitch,
+            R_real = R_real,
             treat_ons = exp.treat_ons,
             treat_offs = exp.treat_offs,
             save_at = save_at,
@@ -178,6 +183,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
                 Cc = exp.Cc,
                 Nswitch = exp.Nswitch,
                 Aswitch = exp.Aswitch,
+                R_real = R_real,
                 treat_ons = [1.0],
                 treat_offs = [100.0],
                 save_at = save_at,
@@ -218,6 +224,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
                 Cc = exp.Cc,
                 Nswitch = exp.Nswitch,
                 Aswitch = exp.Aswitch,
+                R_real = R_real,
                 treat_ons = [IC_treat_on],
                 treat_offs = [100.0],
                 save_at = save_at,
@@ -236,6 +243,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
             Cc = exp.Cc,
             Nswitch = exp.Nswitch,
             Aswitch = exp.Aswitch,
+            R_real = R_real,
             treat_ons = exp.treat_ons,
             treat_offs = exp.treat_offs,
             save_at = save_at,
@@ -309,6 +317,7 @@ end
 
 function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwargs...)
     params = model.params
+    R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
     save_at = _kw(kwargs, :save_at, exp.save_at)
     n_rep = _kw(kwargs, :n_rep, exp.n_rep)
     drug_treatment = _kw(kwargs, :drug_treatment, exp.drug_treatment)
@@ -338,6 +347,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
     n_pass_eff = length(normalize_t_pass(exp.t_Pass)) + 1
 
     n_pop_obsv = n_rep * ((run_IC * 2) + length(exp.t_keep) + n_pass_eff) + (run_colony * 1)
+    validate_resistant_birth_drug_effect(params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
 
     if params.psi < 0.0
@@ -373,6 +383,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
                 Cc = exp.Cc,
                 Nswitch = exp.Nswitch,
                 Aswitch = exp.Aswitch,
+                R_real = R_real,
                 treat_ons = exp.treat_ons,
                 treat_offs = exp.treat_offs,
                 save_at = save_at,
@@ -408,6 +419,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
             Cc = exp.Cc,
             Nswitch = exp.Nswitch,
             Aswitch = exp.Aswitch,
+            R_real = R_real,
             treat_ons = exp.treat_ons,
             treat_offs = exp.treat_offs,
             save_at = save_at,
@@ -435,6 +447,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
             Cc = exp.Cc,
             Nswitch = exp.Nswitch,
             Aswitch = exp.Aswitch,
+            R_real = R_real,
             treat_ons = exp.treat_ons,
             treat_offs = exp.treat_offs,
             save_at = save_at,
@@ -504,6 +517,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
                 Cc = exp.Cc,
                 Nswitch = exp.Nswitch,
                 Aswitch = exp.Aswitch,
+                R_real = R_real,
                 treat_ons = [1.0],
                 treat_offs = [100.0],
                 save_at = save_at,
@@ -545,6 +559,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
                 Cc = exp.Cc,
                 Nswitch = exp.Nswitch,
                 Aswitch = exp.Aswitch,
+                R_real = R_real,
                 treat_ons = [IC_treat_on],
                 treat_offs = [100.0],
                 save_at = save_at,
@@ -563,6 +578,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
             Cc = exp.Cc,
             Nswitch = exp.Nswitch,
             Aswitch = exp.Aswitch,
+            R_real = R_real,
             treat_ons = exp.treat_ons,
             treat_offs = exp.treat_offs,
             save_at = save_at,
@@ -638,10 +654,12 @@ end
 
 function _simulate_simple_hybrid(model::ResPop, sim::SimpleSimParams; kwargs...)
     params = model.params
+    R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
     save_at = _kw(kwargs, :save_at, sim.save_at)
     drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
     de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, params.drug_effect))
 
+    validate_resistant_birth_drug_effect(params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
 
     nR = Float64(round(params.rho * sim.n0))
@@ -657,6 +675,7 @@ function _simulate_simple_hybrid(model::ResPop, sim::SimpleSimParams; kwargs...)
         Cc = sim.Cc,
         Nswitch = sim.Nswitch,
         Aswitch = sim.Aswitch,
+        R_real = R_real,
         treat_ons = sim.treat_ons,
         treat_offs = sim.treat_offs,
         save_at = save_at,
@@ -680,10 +699,12 @@ end
 
 function _simulate_simple_hybrid(model::ResDmg, sim::SimpleSimParams; kwargs...)
     params = model.params
+    R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
     save_at = _kw(kwargs, :save_at, sim.save_at)
     drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
     de = normalize_resdmg_drug_effect(_kw(kwargs, :drug_effect, params.drug_effect))
 
+    validate_resistant_birth_drug_effect(params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
 
     nR = Float64(round(params.rho * sim.n0))
@@ -700,6 +721,7 @@ function _simulate_simple_hybrid(model::ResDmg, sim::SimpleSimParams; kwargs...)
         Cc = sim.Cc,
         Nswitch = sim.Nswitch,
         Aswitch = sim.Aswitch,
+        R_real = R_real,
         treat_ons = sim.treat_ons,
         treat_offs = sim.treat_offs,
         save_at = save_at,

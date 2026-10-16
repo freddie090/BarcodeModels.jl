@@ -4,6 +4,27 @@ const RESPOP_DRUG_EFFECTS = (:d, :b, :c)
 const RESDMG_DRUG_EFFECTS = (:d, :b, :c)
 const TRANSITION_COUPLINGS = (:birth_coupled, :independent_rate)
 
+function normalize_R_real(R_real)
+    R_real isa AbstractString && R_real in ("b", "d", "l") ||
+        error("R_real must be \"b\", \"d\", or \"l\".")
+    return String(R_real)
+end
+
+"""Check birth-only treatment against the selected resistant fitness-cost formulation."""
+function validate_resistant_birth_drug_effect(params, R_real; drug_effect = params.drug_effect)
+    normalize_R_real(R_real)
+    if drug_effect === :b
+        params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
+        bR = R_real == "b" ? params.b - (params.b - params.d) * params.del :
+            R_real == "d" ? params.b : params.b * (1 - params.del)
+        psi_scale = 1 - params.psi
+        if psi_scale > 0.0
+            params.Dc <= bR / psi_scale || error("When drug_effect == :b, Dc*(1-psi) must be <= the resistant birth rate for R_real=\"$(R_real)\". Use drug_effect == :c if stronger drug effects are intended.")
+        end
+    end
+    return nothing
+end
+
 function normalize_transition_coupling(transition_coupling)
     coupling = transition_coupling isa AbstractString ? Symbol(transition_coupling) : transition_coupling
     coupling in TRANSITION_COUPLINGS || error("transition_coupling must be :birth_coupled or :independent_rate.")
@@ -105,11 +126,7 @@ function validate_model_params(params::ResPopParams)
     if params.drug_effect === :b
         params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
 
-        bR = params.b * (1 - params.del)
-        psi_scale = 1 - params.psi
-        if psi_scale > 0.0
-            params.Dc <= (bR / psi_scale) || error("When drug_effect == :b, Dc*(1-psi) must be <= b*(1-del) to keep resistant birth non-negative. Use drug_effect == :c if stronger drug effects are intended.")
-        end
+        # The resistant bound is checked at simulation setup, when R_real is known.
     end
     return params
 end
@@ -143,11 +160,7 @@ function validate_model_params(params::ResDmgParams)
     if params.drug_effect === :b
         params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
 
-        bR = params.b * (1 - params.del)
-        psi_scale = 1 - params.psi
-        if psi_scale > 0.0
-            params.Dc <= (bR / psi_scale) || error("When drug_effect == :b, Dc*(1-psi) must be <= b*(1-del) to keep resistant birth non-negative. Use drug_effect == :c if stronger drug effects are intended.")
-        end
+        # The resistant bound is checked at simulation setup, when R_real is known.
     end
     return params
 end
@@ -174,7 +187,14 @@ struct SimParams
     save_at::Float64
     treat::Bool
     Aswitch::Float64
+    R_real::String
 end
+
+# Preserve the previous positional runtime-settings constructor.
+SimParams(n0, t0, tmax, t_Pass, Nmax, Cc, treat_ons, treat_offs, Nswitch,
+          save_at, treat, Aswitch) =
+    SimParams(; n0, t0, tmax, t_Pass, Nmax, Cc, treat_ons, treat_offs, Nswitch,
+              save_at, treat, Aswitch, R_real = "l")
 
 """Validate the source-population and full event-rate hybrid thresholds."""
 function validate_hybrid_switching_thresholds(Nswitch, Aswitch)
@@ -188,7 +208,7 @@ end
 
 function SimParams(; n0, tmax, Nmax, Cc, Nswitch, treat_ons, treat_offs,
                     t0=0.0, t_Pass=Float64[], save_at=0.5, treat=false,
-                    Aswitch=1000.0)
+                    Aswitch=1000.0, R_real="l")
     validate_hybrid_switching_thresholds(Nswitch, Aswitch)
     Int64(Cc) > 0 || error("Cc must be > 0.")
 
@@ -204,7 +224,8 @@ function SimParams(; n0, tmax, Nmax, Cc, Nswitch, treat_ons, treat_offs,
         Int64(Nswitch),
         Float64(save_at),
         Bool(treat),
-        Float64(Aswitch)
+        Float64(Aswitch),
+        normalize_R_real(R_real)
     )
 end
 
@@ -270,7 +291,7 @@ struct ABMSimParams
 end
 
 function ABMSimParams(; t0 = 0.0, tmax, Nmax, Cc, treat_ons, treat_offs,
-    dt_save_at = 0.1, R_real = "b", t_frac = 0.05, Passage = 1, drug_effect = :d)
+    dt_save_at = 0.1, R_real = "l", t_frac = 0.05, Passage = 1, drug_effect = :d)
 
     return ABMSimParams(
         Float64(t0),
@@ -280,7 +301,7 @@ function ABMSimParams(; t0 = 0.0, tmax, Nmax, Cc, treat_ons, treat_offs,
         Vector{Float64}(treat_ons),
         Vector{Float64}(treat_offs),
         Float64(dt_save_at),
-        String(R_real),
+        normalize_R_real(R_real),
         Float64(t_frac),
         Int64(Passage),
         normalize_respop_drug_effect(drug_effect)

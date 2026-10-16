@@ -315,7 +315,20 @@ Core parameters for the ResPop model family (hybrid and ABM).
 | `drug_effect` | `Symbol` (`:d`) | Drug action mode: death-only (`:d`), birth-only (`:b`), combined (`:c`). | Must be one of `:d`, `:b`, `:c`. |
 | `transition_coupling` | `Symbol` (`:birth_coupled`) | Division outcomes or independent conversion of existing cells. | `:birth_coupled` or `:independent_rate`; exact string equivalents also accepted. |
 
-- `R_real` is an ABM simulation keyword controlling how the resistant fitness cost `del` is realised: `"b"` (default) reduces birth, `"d"` increases death, and `"l"` scales both birth and death by `1-del`. All three give the same untreated baseline net growth, `(b-d)*(1-del)`, but different cell turnover. Pass it to `simulate_experiment` or `simulate_simple`.
+`R_real` controls how the resistant fitness cost `del` is realised in **all Hybrid, ABM, and EvBC models**, for both ResPop and ResDmg. The default is `"l"` in every class. Set it when calling either simulation API:
+
+```julia
+result = simulate_experiment(model, exp; R_real = "l")
+simple = simulate_simple(model, sim; R_real = "d")
+```
+
+| `R_real` | Resistant birth rate | Resistant death rate | Meaning |
+|---|---|---|---|
+| `"l"` (default) | `b*(1-del)` | `d*(1-del)` | Reduce both birth and death. |
+| `"b"` | `b-(b-d)*del` | `d` | Reduce birth only. |
+| `"d"` | `b` | `d+(b-d)*del` | Increase death only. |
+
+These are undamaged R rates before treatment, density scaling, and phenotype transitions. All three give the same baseline birth-minus-death rate, `(b-d)*(1-del)`, but different turnover and, with birth-coupled switching, different daughter-production rates. ResPop E uses baseline birth/death rates; ResDmg damaged states do not divide and have death rate `d + Dc` before density scaling. The selected option applies throughout expansion, replicate growth, passaging, and optional IC/colony assays.
 
 ### `ResDmgParams`
 Core parameters for the ResDmg model family (hybrid and ABM). ResDmg uses `S, DS, DR, R` states and does not include an escape (`E`) transition.
@@ -331,7 +344,7 @@ Core parameters for the ResDmg model family (hybrid and ABM). ResDmg uses `S, DS
 \
 Additional `drug_effect == :b` requirement:
 - `Dc <= b`
-- if `psi < 1`, `Dc*(1-psi) <= b*(1-del)`
+- if `psi < 1`, `Dc*(1-psi)` must not exceed the resistant birth rate in the `R_real` table above. This option-dependent bound is checked when setting up the simulation; `Dc <= b` is also checked by model constructors.
 \
 
 

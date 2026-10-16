@@ -26,9 +26,7 @@ function _core_grow_kill_abm!(
 
     independent = params.transition_coupling === :independent_rate
     de = sim.drug_effect
-    if de == :b
-        @assert params.Dc <= params.b "When drug_effect = :b, Dc must be <= b."
-    end
+    validate_resistant_birth_drug_effect(params, sim.R_real; drug_effect = de)
 
     lam = params.b - params.d
     drug_concs = nothing
@@ -249,7 +247,7 @@ function grow_kill_lin_kmc!(cells::Vector{CancerCell},
     Dc::Float64, k::Float64, psi::Float64,
     t0::Float64, tmax::Float64, Nmax::Int64, Cc::Int64,
     treat_ons::Vector{Float64}, treat_offs::Vector{Float64}, dt_save_at::Float64;
-    R_real::String = "b", t_frac::Float64 = 0.050, treat::Bool = false,
+    R_real::String = "l", t_frac::Float64 = 0.050, treat::Bool = false,
     Passage::Int64 = 1,
     drug_effect::Union{String, Symbol} = :d,
     transition_coupling::Union{String, Symbol} = :birth_coupled)

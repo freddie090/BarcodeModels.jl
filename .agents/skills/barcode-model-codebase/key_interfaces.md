@@ -101,6 +101,14 @@ The hybrid experiment workflows in `src/simulation/simulate_hybrid.jl` are respo
 
 Do not put full experiment orchestration inside `run_model_core_hybrid`.
 
+### Resistant Fitness-Cost Option
+
+`simulate_simple` and `simulate_experiment` accept `R_real = "l"` for both model families and all Hybrid, ABM, and EvBC classes. Only the strings `"b"`, `"d"`, and `"l"` are valid. `SimParams`, `ABMSimParams`, expansion helpers and legacy simulation wrappers also default to `"l"`; keep the setting through treatment overrides, staged expansion, replicate/passaging runs and IC/colony assays.
+
+For undamaged R, before treatment and density scaling, `"b"` gives `(b-(b-d)*del, d)`, `"d"` gives `(b, d+(b-d)*del)`, and `"l"` gives `(b*(1-del), d*(1-del))`. Keep these biological equations visible in each model's rate definitions. All give baseline birth-minus-death `(b-d)*(1-del)`; turnover and coupled daughter-production rates differ. E and damaged-state rules retain their existing formulas.
+
+Model constructors check the option-independent `Dc <= b` bound for birth-only treatment. Simulation setup additionally checks `Dc*(1-psi) <= bR` using the selected option (when `psi < 1`), including drug-effect overrides. The resistant bound must not assume `"l"` before the simulation option is supplied. Before this change, ABM/EvBC defaulted to `"b"` and hybrids were fixed to `"l"`.
+
 ### Coupling And Complete-Event Accounting
 
 `transition_coupling` is a biological option shared by ResPop and ResDmg across hybrid, standard ABM, and EvBC classes. `Nswitch` and `Aswitch` configure numerical representation independently of that option.

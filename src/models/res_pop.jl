@@ -11,12 +11,18 @@ end
 ResPop(; kwargs...) = ResPop(ResPopParams(; kwargs...))
 
 """Build full biological rates and event representation flags, with baseline rates."""
-function build_component_params(params::ResPopParams)
+function build_component_params(params::ResPopParams; R_real = "l")
+    R_real = normalize_R_real(R_real)
     bS = params.b
     dS = params.d
 
-    bR = params.b * (1 - params.del)
-    dR = params.d * (1 - params.del)
+    bR, dR = if R_real == "b"
+        (params.b - (params.b - params.d) * params.del, params.d)
+    elseif R_real == "d"
+        (params.b, params.d + (params.b - params.d) * params.del)
+    else
+        (params.b * (1 - params.del), params.d * (1 - params.del))
+    end
 
     bE = params.b
     dE = params.d
@@ -67,23 +73,16 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
         treat_offs = sim.treat_offs,
         save_at = sim.save_at,
         treat = treat,
-        Aswitch = sim.Aswitch
+        Aswitch = sim.Aswitch,
+        R_real = sim.R_real
     )
 
     params = model.params
     independent = params.transition_coupling === :independent_rate
     de = params.drug_effect
 
-    if de == :b
-        bR = params.b * (1 - params.del)
-        psi_scale = 1 - params.psi
-        params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
-        if psi_scale > 0.0
-            params.Dc <= (bR / psi_scale) || error("When drug_effect == :b, Dc*(1-psi) must be <= b*(1-del) to keep resistant birth non-negative. Use drug_effect == :c if stronger drug effects are intended.")
-        end
-    end
-
-    p, bS, dS, bR, dR, bE, dE = build_component_params(params)
+    validate_resistant_birth_drug_effect(params, sim_eff.R_real)
+    p, bS, dS, bR, dR, bE, dE = build_component_params(params; R_real = sim_eff.R_real)
 
     u0 = to_componentarray(state)
     tspan = (sim_eff.t0, sim_eff.tmax)
@@ -706,6 +705,7 @@ function simulate_grow_kill(n0::Int64, nS::Float64, nR::Float64, nE::Float64,
     treat_ons::Vector{Float64}, treat_offs::Vector{Float64},
     Nswitch::Int64; save_at::Float64 = 0.5, treat::Bool = false,
     Aswitch::Float64 = 1000.0,
+    R_real::String = "l",
     drug_effect::Union{String, Symbol} = "d",
     transition_coupling::Union{String, Symbol} = :birth_coupled)
 
@@ -721,7 +721,7 @@ function simulate_grow_kill(n0::Int64, nS::Float64, nR::Float64, nE::Float64,
         n0 = n0, t0 = t0, tmax = tmax, t_Pass = t_Pass,
         Nmax = Nmax, Cc = Cc, Nswitch = Nswitch,
         treat_ons = treat_ons, treat_offs = treat_offs,
-        save_at = save_at, treat = treat, Aswitch = Aswitch
+        save_at = save_at, treat = treat, Aswitch = Aswitch, R_real = R_real
     )
 
     return run_model_core_hybrid(model, state, sim; treat = treat)

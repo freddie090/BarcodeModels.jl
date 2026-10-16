@@ -182,7 +182,7 @@
 end
 
 function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep::Int64;
-    R_real::String = "b",
+    R_real::String = "l",
     drug_effect::Symbol = model.params.drug_effect,
     skew_lib::Bool = model.abm.skew_lib,
     use_lib_probs::Bool = model.abm.use_lib_probs,
@@ -279,7 +279,7 @@ end
 
 function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwargs...)
     n_rep = _kw(kwargs, :n_rep, exp.n_rep)
-    R_real = _kw(kwargs, :R_real, "b")
+    R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
     t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
     just_lin = _kw(kwargs, :just_lin, false)
     de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
@@ -310,6 +310,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
 
     n_pass_eff = exp.tmax isa AbstractVector ? 1 : (length(_passage_times(exp.t_Pass, Float64(exp.tmax))) + 1)
 
+    validate_resistant_birth_drug_effect(model.params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
     rep_cells = _expand_split_cells_abm(model_eff, exp, n_rep;
                                         R_real = R_real,
@@ -658,7 +659,7 @@ function _run_abm_passage_experiment!(
 end
 
 function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep::Int64;
-    R_real::String = "b",
+    R_real::String = "l",
     drug_effect::Symbol = model.params.drug_effect,
     skew_lib::Bool = model.abm.skew_lib,
     use_lib_probs::Bool = model.abm.use_lib_probs,
@@ -755,7 +756,7 @@ end
 
 function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwargs...)
     n_rep = _kw(kwargs, :n_rep, exp.n_rep)
-    R_real = _kw(kwargs, :R_real, "b")
+    R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
     t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
     just_lin = _kw(kwargs, :just_lin, false)
     de = normalize_resdmg_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
@@ -786,6 +787,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
 
     n_pass_eff = exp.tmax isa AbstractVector ? 1 : (length(_passage_times(exp.t_Pass, Float64(exp.tmax))) + 1)
 
+    validate_resistant_birth_drug_effect(model.params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
     rep_cells = _expand_split_cells_abm(model_eff, exp, n_rep;
                                         R_real = R_real,
@@ -1078,7 +1080,7 @@ function _run_abm_simple!(
 end
 
 function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...)
-    R_real = _kw(kwargs, :R_real, "b")
+    R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
     t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
     de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
     drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
@@ -1089,6 +1091,7 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
     bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
+    validate_resistant_birth_drug_effect(model.params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
                        bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
@@ -1121,7 +1124,7 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
 end
 
 function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...)
-    R_real = _kw(kwargs, :R_real, "b")
+    R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
     t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
     de = normalize_resdmg_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
     drug_treatment = _kw(kwargs, :drug_treatment, sim.drug_treatment)
@@ -1132,6 +1135,7 @@ function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...
     bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
+    validate_resistant_birth_drug_effect(model.params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
                        bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
