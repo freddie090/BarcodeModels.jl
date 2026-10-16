@@ -35,6 +35,8 @@ For a new standard ABM model family:
 
 For a new EvBC ABM model family:
 
+For the existing ResPop/ResDmg families, standard ABM and EvBC types/setup share each model's `_abm_types.jl` file and events share `_abm_events.jl`. Extend those existing sections; wrapper types, constructors and cores remain in the original model scripts. This agreed layout is not permission to extract further machinery.
+
 1. Start from the matching standard ABM model if one exists.
 2. Add lineage-aware cell fields and state.
 3. Maintain `LineageRecord` creation for births and ancestry. Independent phenotype conversions preserve existing identity and records and create no birth record; later births use the parent's current phenotype.

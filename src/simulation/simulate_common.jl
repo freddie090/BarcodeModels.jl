@@ -24,6 +24,19 @@ function _replicate_tmax(tmax, n_rep::Int64, i::Int64)
     return tmax isa AbstractVector ? Float64(tmax[i]) : Float64(tmax)
 end
 
+"""Normalise an ABM passage schedule into sorted unique positive times."""
+function _passage_times(t_Pass::Union{Float64, Vector{Float64}}, tmax::Float64)
+    if t_Pass isa AbstractVector
+        times = sort(unique(Float64.(t_Pass)))
+        any(t -> t <= 0.0, times) && error("All t_Pass values must be > 0.0. Use Float64[] for no passage events.")
+        return times
+    else
+        t_val = Float64(t_Pass)
+        t_val > 0.0 || error("t_Pass must be > 0.0. Use Float64[] for no passage events.")
+        return [t_val]
+    end
+end
+
 function _copy_respop_params(params::ResPopParams; rho = params.rho, al = params.al, drug_effect = params.drug_effect)
     return ResPopParams(
         b = params.b,

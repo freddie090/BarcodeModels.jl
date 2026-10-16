@@ -1,7 +1,66 @@
-function _lineage_required_columns_present(lineage_df::DataFrame)
+"""Assign root ids and lineage records to live EvBC cells and reset dead-cell metadata."""
+function _init_lineage_state!(cells, phenotype_label::F, t0::Float64;
+    start_id::Int64 = 1) where {F}
+    start_id > 0 || throw(ArgumentError("start_id must be > 0; zero is reserved for absent lineage ids."))
+    lineage_records = LineageRecord[]
+    next_cell_id = start_id
+    for i in eachindex(cells)
+        if cells[i].alive
+            cells[i].id = next_cell_id
+            cells[i].parent_id = 0
+            cells[i].birth_time = t0
+            push!(lineage_records, LineageRecord(next_cell_id, 0, t0, "ROOT", phenotype_label(cells[i]), cells[i].barcode))
+            next_cell_id += 1
+        else
+            cells[i].id = 0
+            cells[i].parent_id = 0
+            cells[i].birth_time = -1.0
+        end
+    end
+    return next_cell_id, lineage_records
+end
+
+"""Build the lineage output table from records and extant cell ids."""
+function _lineage_df(records::Vector{LineageRecord}, rep::Int64, alive_ids::Vector{Int64} = Int64[])
+    if isempty(records)
+        return DataFrame(
+            id = Int64[],
+            parent_id = Int64[],
+            birth_time = Float64[],
+            parent_pheno = String[],
+            child_pheno = String[],
+            barcode = Float64[],
+            alive_at_end = Bool[],
+            rep = Int64[]
+        )
+    end
+    ids = [r.id for r in records]
+    parent_ids = [r.parent_id for r in records]
+    birth_times = [r.birth_time for r in records]
+    parent_phenos = [r.parent_pheno for r in records]
+    child_phenos = [r.child_pheno for r in records]
+    barcodes = [r.barcode for r in records]
+    alive_id_set = Set(alive_ids)
+    alive_at_end = [id in alive_id_set for id in ids]
+    return DataFrame(
+        id = ids,
+        parent_id = parent_ids,
+        birth_time = birth_times,
+        parent_pheno = parent_phenos,
+        child_pheno = child_phenos,
+        barcode = barcodes,
+        alive_at_end = alive_at_end,
+        rep = fill(rep, length(records))
+    )
+end
+
+function _lineage_required_columns_present(lineage_df::DataFrame; unique_ids::Bool = false)
     required = ["id", "parent_id", "birth_time"]
     missing_cols = filter(c -> !(c in names(lineage_df)), required)
     isempty(missing_cols) || throw(ArgumentError("lineage_df is missing required columns: $(join(missing_cols, ", "))."))
+    if unique_ids && !allunique(lineage_df.id)
+        throw(ArgumentError("lineage_df contains duplicate cell ids, so ancestry is ambiguous. For older experiment outputs, select one replicate before building a tree or joining parent barcodes. Separate simulation runs also have independent id spaces."))
+    end
     return nothing
 end
 
@@ -44,7 +103,7 @@ function _lineage_rows(lineage_df::DataFrame; extant_only::Bool = false)
 end
 
 function build_phylogeny(lineage_df::DataFrame; extant_only::Bool = false)
-    _lineage_required_columns_present(lineage_df)
+    _lineage_required_columns_present(lineage_df; unique_ids = true)
     lineage_rows = _lineage_rows(lineage_df; extant_only = extant_only)
     edges = Tuple{Int64, Int64}[]
     for row in eachrow(lineage_rows)
@@ -57,7 +116,7 @@ function build_phylogeny(lineage_df::DataFrame; extant_only::Bool = false)
 end
 
 function build_tree(lineage_df::DataFrame; extant_only::Bool = false)
-    _lineage_required_columns_present(lineage_df)
+    _lineage_required_columns_present(lineage_df; unique_ids = true)
     lineage_rows = _lineage_rows(lineage_df; extant_only = extant_only)
     children = Dict{Int64, Vector{Int64}}()
 
@@ -94,7 +153,7 @@ function population_to_newick(lineage_df::DataFrame, root_id::Int64; extant_only
 end
 
 function lineage_edge_barcodes(lineage_df::DataFrame)
-    _lineage_required_columns_present(lineage_df)
+    _lineage_required_columns_present(lineage_df; unique_ids = true)
     "barcode" in names(lineage_df) || throw(ArgumentError("lineage_df is missing required column: barcode."))
 
     nodes = select(lineage_df, :id, :parent_id, :barcode)

@@ -268,10 +268,11 @@ end
     @test counts.Scount == 0 && counts.Rcount == 1
     @test state.cells[1].alive && state.cells[1].R && !state.cells[1].E
     @test state.lineage_records[1] == record
+    mother_id = state.cells[1].id
     BarcodeModels._birth_mutate_event_evbc!(state,1,2,0.0,0.0,0.0,counts,0.2)
     @test state.lineage_records[end].parent_pheno == "R"
     @test state.lineage_records[end].child_pheno == "R"
-    @test state.cells[2].parent_id == state.cells[1].id
+    @test state.cells[2].parent_id == state.cells[1].parent_id == mother_id
     BarcodeModels.respop_R_to_E_transition_event!(state.cells,1,counts)
     BarcodeModels.respop_R_to_S_transition_event!(state.cells,1,counts)
     @test state.cells[1].E && !state.cells[1].R # E is terminal.

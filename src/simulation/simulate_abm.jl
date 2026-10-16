@@ -1,39 +1,4 @@
-﻿function _record_abm_outputs!(kmc_out, cells, rep::Int64, curr_P::Int64,
-    cell_lin_df_vec::Vector{DataFrame},
-    Nvec::Vector{Int64}, nS_vec::Vector{Int64}, nR_vec::Vector{Int64}, nE_vec::Vector{Int64},
-    tvec::Vector{Float64}, Pvec::Vector{Int64};
-    sub_sample_cells::Bool = false, K::Int64 = 0,
-    samp_cell_lin_df_vec::Vector{DataFrame} = DataFrame[])
-
-    live_cells = alive_cells(cells)
-    bc_df = get_counts(live_cells, string("DT", rep, "_P", curr_P))
-    push!(cell_lin_df_vec, bc_df)
-
-    if sub_sample_cells
-        if K <= length(live_cells)
-            samp_cells = sample(live_cells, K, replace = false)
-            push!(samp_cell_lin_df_vec, get_counts(samp_cells, string("DT", rep, "_P", curr_P)))
-        else
-            push!(samp_cell_lin_df_vec, get_counts(live_cells, string("DT", rep, "_P", curr_P)))
-        end
-    end
-
-    update_track_vec!(kmc_out, Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec)
-end
-
-function _passage_times(t_Pass::Union{Float64, Vector{Float64}}, tmax::Float64)
-    if t_Pass isa AbstractVector
-        times = sort(unique(Float64.(t_Pass)))
-        any(t -> t <= 0.0, times) && error("All t_Pass values must be > 0.0. Use Float64[] for no passage events.")
-        return times
-    else
-        t_val = Float64(t_Pass)
-        t_val > 0.0 || error("t_Pass must be > 0.0. Use Float64[] for no passage events.")
-        return [t_val]
-    end
-end
-
-function _run_abm_passage_experiment!(
+﻿function _run_abm_passage_experiment!(
     model::ResPop_ABM,
     cells::Vector{CancerCell};
     t0::Float64,
@@ -505,29 +470,6 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
         out["sub_lin_df"] = join_dfs(sub_lin_df_outs, "bc")
     end
     return out
-end
-
-function _record_resdmg_abm_outputs!(kmc_out, cells, rep::Int64, curr_P::Int64,
-    cell_lin_df_vec::Vector{DataFrame},
-    Nvec::Vector{Int64}, nS_vec::Vector{Int64}, nDS_vec::Vector{Int64}, nDR_vec::Vector{Int64}, nR_vec::Vector{Int64},
-    tvec::Vector{Float64}, Pvec::Vector{Int64};
-    sub_sample_cells::Bool = false, K::Int64 = 0,
-    samp_cell_lin_df_vec::Vector{DataFrame} = DataFrame[])
-
-    live_cells = alive_cells(cells)
-    bc_df = get_counts(live_cells, string("DT", rep, "_P", curr_P))
-    push!(cell_lin_df_vec, bc_df)
-
-    if sub_sample_cells
-        if K <= length(live_cells)
-            samp_cells = sample(live_cells, K, replace = false)
-            push!(samp_cell_lin_df_vec, get_counts(samp_cells, string("DT", rep, "_P", curr_P)))
-        else
-            push!(samp_cell_lin_df_vec, get_counts(live_cells, string("DT", rep, "_P", curr_P)))
-        end
-    end
-
-    update_track_vec_resdmg!(kmc_out, Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec)
 end
 
 function _run_abm_passage_experiment!(

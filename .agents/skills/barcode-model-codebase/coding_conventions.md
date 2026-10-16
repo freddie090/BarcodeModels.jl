@@ -16,9 +16,10 @@ Common placements:
 
 - Biological parameters, rates, transitions, and validation: `src/types/Parameters.jl` and `src/models/`.
 - Hybrid state containers and `ComponentArray` conversion: `src/types/State.jl`.
-- Model class hierarchy: `src/models/abstract.jl`.
+- Model class hierarchy: `src/types/abstract.jl`.
 - Public API dispatch: `src/simulation/simulate.jl`.
 - Experiment and simple-simulation workflows: `src/simulation/simulate_hybrid.jl`, `src/simulation/simulate_abm.jl`, and `src/simulation/simulate_abm_evbc.jl`.
+- Shared ABM output tables and trajectory recording: `src/simulation/abm_outputs.jl`.
 - Reusable mechanics: `src/helpers/`.
 
 ## Naming
@@ -91,7 +92,8 @@ ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ResPopParams(
   - `alive_cells`
 - Increase or validate `Nbuff` rather than silently writing past available dead slots.
 - Reuse generic ABM mechanics already in `src/helpers/abm_helpers.jl`; propose any new extraction separately.
-- Keep model-specific ABM events in the model implementation file.
+- Keep ResPop/ResDmg standard ABM and EvBC types/setup together in each family's `_abm_types.jl` file, and their events together in `_abm_events.jl`, under `src/models/`.
+- Keep model wrapper types, constructors, simulation cores and legacy wrappers in the existing ABM/EvBC model scripts.
 - Use `!` for event functions and functions that mutate cells, state, counts, or output vectors.
 - Apply the shared buffer and proposal-envelope safeguards in [key_interfaces.md](key_interfaces.md) to both coupling modes and both ABM variants.
 
@@ -108,7 +110,7 @@ ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ResPopParams(
   - `barcode`
   - `alive_at_end`
 - Put generic lineage table/tree operations in `src/helpers/lineage_utils.jl`.
-- Keep model-specific lineage creation inside EvBC model files.
+- Root-lineage initialisation is shared in lineage utilities through typed forwarding methods in each family's `_abm_types.jl` file, alongside phenotype labels and cell conversions. Birth-record creation stays in the model-family event file.
 - Preserve conversion identity and birth-record semantics described in [key_interfaces.md](key_interfaces.md).
 
 ## Output Conventions

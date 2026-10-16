@@ -249,6 +249,39 @@ function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
     )
 end
 
+"""Shared runtime settings for standard and lineage-aware ABM simulations."""
+struct ABMSimParams
+    t0::Float64
+    tmax::Float64
+    Nmax::Int64
+    Cc::Int64
+    treat_ons::Vector{Float64}
+    treat_offs::Vector{Float64}
+    dt_save_at::Float64
+    R_real::String
+    t_frac::Float64
+    Passage::Int64
+    drug_effect::Symbol
+end
+
+function ABMSimParams(; t0 = 0.0, tmax, Nmax, Cc, treat_ons, treat_offs,
+    dt_save_at = 0.1, R_real = "b", t_frac = 0.05, Passage = 1, drug_effect = :d)
+
+    return ABMSimParams(
+        Float64(t0),
+        Float64(tmax),
+        Int64(Nmax),
+        Int64(Cc),
+        Vector{Float64}(treat_ons),
+        Vector{Float64}(treat_offs),
+        Float64(dt_save_at),
+        String(R_real),
+        Float64(t_frac),
+        Int64(Passage),
+        normalize_respop_drug_effect(drug_effect)
+    )
+end
+
 struct ExperimentParams
     n0::Int64
     t_exp::Union{Float64, Vector{Float64}}

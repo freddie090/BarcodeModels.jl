@@ -72,7 +72,7 @@ simulate_experiment(model, exp; kwargs...)
 simulate_simple(model, sim; kwargs...)
 ```
 
-New broad simulation methodologies should usually add a new abstract subtype in `src/models/abstract.jl` and corresponding dispatch paths. New biological models should usually reuse `HybridModel` or `ABMModel` rather than adding a new model class.
+New broad simulation methodologies should usually add a new abstract subtype in `src/types/abstract.jl` and corresponding dispatch paths. New biological models should usually reuse `HybridModel` or `ABMModel` rather than adding a new model class.
 
 ## Hybrid Simulation Interface
 
@@ -169,6 +169,10 @@ The ABM workflow in `src/simulation/simulate_abm.jl` is responsible for:
 
 Do not put experiment-level replicate splitting or public output assembly inside core ABM event functions.
 
+Shared `ABMSimParams` is defined in `src/types/Parameters.jl`. Barcode count tables, trajectory appending, and passage-output recording live in `src/simulation/abm_outputs.jl`; ABM workflow loops remain in their existing simulation files.
+
+ResPop and ResDmg each have model-family `_abm_types.jl` and `_abm_events.jl` support files under `src/models/`, with standard ABM and EvBC sections together. Types/setup load before events, which load before the four existing model scripts. Those scripts retain model wrappers, constructors and simulation cores.
+
 ### Shared ABM Safeguards
 
 These numerical and buffer contracts apply to both coupling modes in standard ABM and EvBC:
@@ -210,7 +214,11 @@ The public `lineage_df` should include:
 
 Generic operations on lineage tables belong in `src/helpers/lineage_utils.jl`, not inside one biological model.
 
+Shared root initialisation and `_lineage_df` live in lineage utilities. Typed `_init_lineage_state!(cells, t0)` methods, phenotype labels and cell conversions live in each family's `_abm_types.jl` file. The typed methods forward the model-specific phenotype-label function to the shared initialiser. Birth-record creation lives in each family's `_abm_events.jl` file.
+
 `lineage_df` records births and ancestry, not a complete phenotype-change history. Independent conversions preserve cell ID, parent ID, birth time, next-cell ID, and existing lineage records; they create no birth record. Subsequent births record the parent's phenotype at that division.
+
+EvBC cell ids are unique across all replicates within one experiment. Root initialisation accepts a starting id (default 1); each replicate starts at the previous replicate's returned next unused id, including ids consumed by daughters that later died or were removed by passaging. Passage sampling preserves existing cell identity and ancestry. Parent references may cross replicate labels when such ancestry is supplied; replicate membership is not a cell identity. Initial expansion still uses standard ABM cells, so pre-split ancestry is not recorded. Separate simulation calls have independent id spaces. Tree/phylogeny and parent-barcode utilities reject duplicate ids rather than merging ambiguous ancestors; older combined experiment tables must be filtered to one replicate before these operations.
 
 ## Parameter Object Interface
 
@@ -316,7 +324,8 @@ Use:
 
 - `src/helpers/common_helpers.jl` for shared indexing, population, logistic, sampling, and nearest-time utilities.
 - `src/helpers/ode_helpers.jl` for reusable hybrid/ODE drug-effect and rate utilities.
-- `src/helpers/abm_helpers.jl` for reusable ABM cell-buffer, barcode, concentration, count, and tracking utilities.
+- `src/helpers/abm_helpers.jl` for reusable ABM cell-buffer, initial-barcode sampling, and concentration utilities.
+- `src/simulation/abm_outputs.jl` for barcode count tables and ABM trajectory/output-recording helpers.
 - `src/helpers/lineage_utils.jl` for generic lineage table, tree, and Newick utilities.
 
 Helpers should not silently encode a new biological hypothesis. Reuse existing helpers; keep new model logic local by default. Sharing across models alone does not authorise extracting an engine, relocating functions, or adding helper scripts. Those structural changes require user agreement; preserve familiar workflow order and explicit phenotype equations.

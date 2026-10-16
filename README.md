@@ -167,6 +167,8 @@ using BarcodeModels
 ### 4) Run a minimal simple simulation (single population)
 
 ```julia
+# Define the parameters describing the biological model and treatment effects
+# (biological model defined by the type of params object used)
 params = ResPopParams(
     b = 0.893,
     d = 0.200,
@@ -181,6 +183,7 @@ params = ResPopParams(
     drug_effect = :c
 )
 
+# Define the parameters describing the experimental variables
 sim = SimpleSimParams(
     n0 = Int(1e+03),
     tmax = 30.0,
@@ -194,19 +197,17 @@ sim = SimpleSimParams(
     drug_treatment = true
 )
 
-# Hybrid
+# Simulate simple: Hybrid
 simple_hybrid = simulate_simple(ResPop(params), sim)
 
-# Standard ABM
-simple_abm = simulate_simple(ResPop_ABM(params), sim)
 
-# EvBC ABM
-simple_evbc = simulate_simple(ResPop_ABM_EvBC(params), sim)
 ```
 
 ### 5) Run a minimal full experiment
 
 ```julia
+# Define the parameters describing the biological model and treatment effects
+# (biological model defined by the type of params object used)
 params = ResPopParams(
     b = 0.893,
     d = 0.200,
@@ -225,6 +226,7 @@ params = ResPopParams(
 model_hybrid = ResPop(params)
 model_abm = ResPop_ABM(params)
 
+# Define the parameters describing the experimental variables
 exp = ExperimentParams(
     n0 = Int(1e+03),
     t_exp = 6.0,
@@ -241,10 +243,12 @@ exp = ExperimentParams(
     n_rep = 4
 )
 
+# Simulate experiment: Hybrid
 result_hybrid = simulate_experiment(model_hybrid, exp)
+# Simulate experiment: ABM
 result_abm = simulate_experiment(model_abm, exp)
 
-# ResDmg variant
+# ResDmg model variant
 params_dmg = ResDmgParams(
     b = 0.893,
     d = 0.200,
@@ -261,11 +265,15 @@ params_dmg = ResDmgParams(
     drug_effect = :c
 )
 
+# Choose either model class (from hybrid or ABM model types)
 model_dmg_hybrid = ResDmg(params_dmg)
 model_dmg_abm = ResDmg_ABM(params_dmg)
 
+# Simulate experiment: Hybrid
 result_dmg_hybrid = simulate_experiment(model_dmg_hybrid, exp)
+# Simulate experiment: ABM
 result_dmg_abm = simulate_experiment(model_dmg_abm, exp)
+# Note that the same `exp` object can be used for both model classes
 ```
 
 ### Phenotypic Transition Modes
@@ -435,7 +443,7 @@ Additional keys:
 - `"sub_lin_df"` is included when `sub_sample_cells=true`
 
 `lineage_df` schema (EvBC):
-- `id::Int64`: unique cell lineage node id
+- `id::Int64`: cell lineage node id, unique across all replicates within one experiment
 - `parent_id::Int64`: direct parent id (`0` indicates founder/root record)
 - `birth_time::Float64`: simulation time when node was created
 - `parent_pheno::String`: parent phenotype at division event
@@ -443,6 +451,8 @@ Additional keys:
 - `barcode::Float64`: node barcode value (currently inherited ground-truth value)
 - `alive_at_end::Bool`: whether that lineage node is alive at simulation end
 - `rep::Int64`: replicate index
+
+Passaging preserves retained cells' ids and ancestry; barcodes are unchanged. Lineage tracking starts after the initial expansion and replicate split, so ancestry during expansion is not recorded. Separate simulation calls have independent id spaces.
 
 `sol_df` columns:
 - `ResPop_ABM_EvBC`: `t, N, nS, nR, nE, rep`
@@ -459,6 +469,8 @@ Notes:
 - `lineage_df` still includes `rep` (fixed to `1` in simple mode)
 
 ### Working with lineage outputs
+
+Tree, phylogeny and parent-barcode utilities reject duplicate cell ids. For older experiment outputs that restarted ids in each replicate, select one replicate before calling these utilities. New experiment outputs have unique ids across replicates and can be used as a combined table.
 
 The following utility functions can be used directly on `lineage_df`:
 

@@ -17,7 +17,7 @@ This map should be read alongside the framework overview. That document defines 
 The main package layers map to the source tree as follows:
 
 - Biological hypotheses mostly live in `src/types/Parameters.jl`, `src/types/State.jl`, and the biological event/rate definitions inside `src/models/`.
-- Simulation methodologies live in `src/models/abstract.jl`, model-class-specific implementations in `src/models/`, and workflow dispatch in `src/simulation/`.
+- Simulation methodologies use the hierarchy in `src/types/abstract.jl`, model-class-specific implementations in `src/models/`, and workflow dispatch in `src/simulation/`.
 - Experimental designs live in the simulation parameter types in `src/types/Parameters.jl` and the orchestration code in `src/simulation/`.
 - Shared utilities live in `src/helpers/`, plotting lives in `src/plotting/`, and verification lives in `test/`.
 
@@ -41,8 +41,11 @@ BarcodeModels.jl
 |   |   Module entry point, includes, imports, and exports.
 |   |
 |   |-- types/
-|   |   Shared parameter, state, and output record types.
+|   |   Shared model hierarchy, parameter, state, and output record types.
 |   |
+|   |   |-- abstract.jl
+|   |   |   Common model hierarchy.
+|   |   |
 |   |   |-- Parameters.jl
 |   |   |   Biological, simulation, and experiment parameter structs.
 |   |   |
@@ -52,14 +55,23 @@ BarcodeModels.jl
 |   |-- models/
 |   |   Biological model implementations by simulation class.
 |   |
-|   |   |-- abstract.jl
-|   |   |   Common model hierarchy.
-|   |   |
 |   |   |-- res_pop.jl
 |   |   |   Hybrid resistance population model.
 |   |   |
 |   |   |-- res_dmg.jl
 |   |   |   Hybrid resistance-damage model.
+|   |   |
+|   |   |-- res_pop_abm_types.jl
+|   |   |   ResPop standard/EvBC types and setup helpers.
+|   |   |
+|   |   |-- res_pop_abm_events.jl
+|   |   |   ResPop standard/EvBC events.
+|   |   |
+|   |   |-- res_dmg_abm_types.jl
+|   |   |   ResDmg standard/EvBC types and setup helpers.
+|   |   |
+|   |   |-- res_dmg_abm_events.jl
+|   |   |   ResDmg standard/EvBC events.
 |   |   |
 |   |   |-- res_pop_abm.jl
 |   |   |   Agent-based resistance population model.
@@ -81,6 +93,9 @@ BarcodeModels.jl
 |   |   |
 |   |   |-- simulate_common.jl
 |   |   |   Shared simulation workflow helpers.
+|   |   |
+|   |   |-- abm_outputs.jl
+|   |   |   Shared ABM barcode tables and trajectory output recording.
 |   |   |
 |   |   |-- simulate_hybrid.jl
 |   |   |   Hybrid experiment and simple-simulation workflows.
@@ -104,10 +119,10 @@ BarcodeModels.jl
 |   |   |   Shared hybrid drug-effect helpers.
 |   |   |
 |   |   |-- abm_helpers.jl
-|   |   |   Shared ABM cell, barcode, and tracking helpers.
+|   |   |   Shared ABM cell-buffer, barcode, and concentration helpers.
 |   |   |
 |   |   |-- lineage_utils.jl
-|   |       Generic lineage table and tree utilities.
+|   |       Shared root-lineage setup, table, and tree utilities.
 |   |
 |   |-- plotting/
 |       Plotting helpers for simulation outputs.
@@ -145,7 +160,7 @@ BarcodeModels.jl
 
 ## Core Types
 
-- `src/models/abstract.jl`
+- `src/types/abstract.jl`
   - Defines the abstract model hierarchy:
     - `AbstractBarcodeModel`
     - `HybridModel`
@@ -160,6 +175,7 @@ BarcodeModels.jl
   - Defines simulation configuration types for current model classes:
     - `SimParams`
     - `ABMParams`
+    - `ABMSimParams`
   - Defines experiment design parameters:
     - `ExperimentParams`
     - `SimpleSimParams`
@@ -193,22 +209,29 @@ BarcodeModels.jl
 
 - `src/models/res_pop_abm.jl`
   - Standard agent-based implementation of the `ResPop` biological model.
-  - Defines cell, phenotype count, output, state, and ABM simulation parameter structures used by the ResPop ABM path.
-  - Contains the concrete `ResPop_ABM <: ABMModel` type, `CancerCell`, phenotype count/output structs, ABM state, seeding, birth/mutation/death events, tracking updates, and `run_model_core_abm`.
+  - Contains the concrete `ResPop_ABM <: ABMModel` type and constructors, simulation core, `run_model_core_abm`, and the legacy wrapper.
+  - Types/setup and events are in the model-family support files below; shared `ABMSimParams` lives in `src/types/Parameters.jl`.
   - Use this as the closest template for new ABM models where cells carry phenotype/barcode identities but not accumulating lineage information used for 'evolving barcodes' (enable tree building).
 
 - `src/models/res_dmg_abm.jl`
   - Standard agent-based implementation of the `ResDmg` biological model.
-  - Defines ResDmg-specific cell/count/output/state structures and ABM event functions for birth, mutation, damage, repair, and death.
+  - Contains the concrete model type and constructors, simulation core, `run_model_core_abm`, and the legacy wrapper; uses the ResDmg support files below.
 
 - `src/models/res_pop_abm_evbc.jl`
   - EvBC lineage-tracking agent-based implementation of the `ResPop` biological model.
-  - Defines lineage-aware ResPop cells and state, conversion from standard ABM cells, lineage initialisation, lineage-aware birth/mutation events, and `run_model_core_abm`.
+  - Contains the concrete EvBC model type and constructors, lineage-aware simulation core, and `run_model_core_abm`; uses the same ResPop support files as standard ABM.
   - Use this when new functionality needs individual ancestry or cell-history outputs - these are used for 'evolving barcodes' (enable single-cell tree building).
 
 - `src/models/res_dmg_abm_evbc.jl`
   - EvBC lineage-tracking agent-based implementation of the `ResDmg` biological model.
-  - Defines lineage-aware ResDmg cells and state, conversion from standard ResDmg ABM cells, lineage initialisation, lineage-aware events, and `run_model_core_abm`.
+  - Contains the concrete EvBC model type and constructors, lineage-aware simulation core, and `run_model_core_abm`; uses the same ResDmg support files as standard ABM.
+
+- `src/models/res_pop_abm_types.jl` and `src/models/res_dmg_abm_types.jl`
+  - Each keeps standard ABM and EvBC sections together for one biological model.
+  - Defines cell, count, output, and state types; dead-cell factories; seeding; phenotype labels; typed lineage-initialisation forwarding methods; and cell conversion.
+- `src/models/res_pop_abm_events.jl` and `src/models/res_dmg_abm_events.jl`
+  - Each contains standard birth, shared phenotype/death handlers, and lineage-aware birth for one biological model; ResDmg also includes damage and repair.
+  - Load both family types files before events, and events before the existing ABM model files. Existing model-core order is preserved.
 
 Naming note: existing concrete Julia type names such as `ResPop_ABM` encode both biological model and model class. When designing new concepts, keep the distinction clear in the architecture even if concrete implementation names follow the current package convention.
 
@@ -243,8 +266,12 @@ Naming note: existing concrete Julia type names such as `ResPop_ABM` encode both
 
 - `src/simulation/simulate_common.jl`
   - Shared simulation helpers.
-  - Includes keyword default handling, vector `tmax` validation, replicate-specific time horizons, parameter-copy helpers, and drug-effect model cloning.
-  - Put cross-pipeline orchestration helpers here only if they are not specific to one biological model or model class.
+  - Includes keyword default handling, vector `tmax` validation, replicate-specific time horizons, ABM passage-schedule normalisation, parameter-copy helpers, and drug-effect model cloning.
+  - Keep shared scheduling and orchestration helpers here; keep workflow loops in their existing simulation files.
+
+- `src/simulation/abm_outputs.jl`
+  - Shared standard ABM and EvBC output helpers: `rep_missings`, `join_dfs`, `get_counts`, both trajectory-append functions, and both model-specific output-recording functions.
+  - Included before the standard and EvBC simulation workflows. Passage, expansion, and replicate orchestration remain in those workflow files.
 
 - `src/simulation/noise.jl`
   - Measurement noise helper for simulated outputs.
@@ -263,11 +290,13 @@ Naming note: existing concrete Julia type names such as `ResPop_ABM` encode both
   - Reuse existing helpers. Keep complete-event classification and model-local rate builders in their current model scripts.
 
 - `src/helpers/abm_helpers.jl`
-  - Shared ABM utilities for treatment concentration schedules, barcode probability generation, live/dead cell management, generic birth/death helpers, count tables, and tracking vectors.
+  - Shared ABM utilities for treatment concentration schedules, barcode probability generation and initial sampling, and live/dead cell management.
+  - ABM biological events live in their model-family event files; barcode count tables and trajectory-output helpers live in `src/simulation/abm_outputs.jl`.
   - Add ABM mechanics here when they are reusable across ABM biological models.
 
 - `src/helpers/lineage_utils.jl`
   - Utilities for EvBC lineage outputs.
+  - Provides shared root-lineage initialisation and `_lineage_df`; family types files retain typed forwarding methods, phenotype labels and cell conversions, while family event files retain birth-record creation.
   - Builds phylogeny/tree structures, Newick strings, node metadata, and edge barcode tables from `lineage_df`.
   - Add lineage-output analysis or conversion helpers here, rather than inside a specific model, when they operate on generic lineage tables.
 
@@ -281,6 +310,7 @@ Naming note: existing concrete Julia type names such as `ResPop_ABM` encode both
 
 - `test/runtests.jl`
   - Main package test entry point used by `Pkg.test()` and the local runner. Inspect its actual includes before reporting coverage; a file's presence in `test/` does not mean it runs automatically.
+  - Includes `test/abm_organization.jl`, covering seeding, root-lineage metadata and birth ancestry, and public ABM passage/subsampling outputs.
 
 - `test/hybrid_events.jl` and `test/hybrid_solver_checks.jl`
   - Focused hybrid accounting, classification, fractional-boundary, analytical, and solver checks; these may be local/ignored.

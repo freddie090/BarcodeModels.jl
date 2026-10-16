@@ -3,6 +3,9 @@ using DataFrames
 using BarcodeModels
 using Random
 
+include("abm_organization.jl")
+include("lineage_ids.jl")
+
 Random.seed!(20261012)
 
 function simulate_hybrid_experiment(model)

@@ -67,6 +67,25 @@ function generate_probabilities(X::Vector, prob_unif::Float64)
     return rand(Dirichlet(prob_unif_vector))
 end
 
+"""Sample initial ABM barcode identities using the selected library settings."""
+function _sample_initial_barcodes(N::Int64;
+    skew_lib::Bool = false, use_lib_probs::Bool = false, bc_unif::Float64 = 0.0,
+    Nbc::Int64 = 0, bc_probs = Float64[])
+
+    if use_lib_probs
+        bc_probs_vec = Vector{Float64}(bc_probs)
+        samp_bcs = rand(Categorical(bc_probs_vec), N)
+    elseif skew_lib
+        bcs = collect(1:Nbc)
+        bc_probs = generate_probabilities(bcs, bc_unif)
+        samp_bcs = bcs[rand(Categorical(bc_probs), N)]
+    else
+        samp_bcs = collect(1:N)
+    end
+
+    return samp_bcs
+end
+
 function find_first_dead_index(cell_arr)::Int
     for i in 1:length(cell_arr)
         if !cell_arr[i].alive
@@ -113,104 +132,4 @@ function extend_with_dead_cells!(cells, Nbuff::Int64, make_dead_cell::Function)
     if Nbuff > initial_length
         append!(cells, [make_dead_cell() for _ in 1:(Nbuff - initial_length)])
     end
-end
-
-function birth_mutate_event!(cell_arr,
-    cell_pos::Int64, birth_pos::Int64,
-    mu::Float64, sig::Float64, al::Float64,
-    phen_counts)
-
-    if cell_pos <= 0 || cell_pos > length(cell_arr) || birth_pos <= 0 || birth_pos > length(cell_arr)
-        throw(ArgumentError("Invalid cell position or birth position"))
-    end
-
-    cell_arr[birth_pos].barcode = cell_arr[cell_pos].barcode
-    cell_arr[birth_pos].R = cell_arr[cell_pos].R
-    cell_arr[birth_pos].E = cell_arr[cell_pos].E
-    cell_arr[birth_pos].alive = true
-
-    mut_p = rand()
-
-    if cell_arr[birth_pos].E
-        phen_counts.Ecount += 1
-    elseif cell_arr[birth_pos].R
-        if mut_p < sig
-            cell_arr[birth_pos].R = false
-            phen_counts.Scount += 1
-        elseif sig <= mut_p < (sig + al)
-            cell_arr[birth_pos].R = false
-            cell_arr[birth_pos].E = true
-            phen_counts.Ecount += 1
-        else
-            phen_counts.Rcount += 1
-        end
-    else
-        if mu > mut_p
-            cell_arr[birth_pos].R = true
-            phen_counts.Rcount += 1
-        else
-            phen_counts.Scount += 1
-        end
-    end
-end
-
-function death_event!(cell_arr, cell_pos::Int64, phen_counts)
-    if cell_pos <= 0 || cell_pos > length(cell_arr)
-        throw(ArgumentError("Invalid cell position"))
-    end
-
-    cell_arr[cell_pos].alive = false
-
-    if cell_arr[cell_pos].E
-        phen_counts.Ecount -= 1
-    elseif cell_arr[cell_pos].R
-        phen_counts.Rcount -= 1
-    else
-        phen_counts.Scount -= 1
-    end
-end
-
-function rep_missings(df::DataFrame)
-    for col in names(df)
-        df[ismissing.(df[:, col]), col] .= 0.0
-    end
-    return df
-end
-
-function join_dfs(dfs::Vector{DataFrame}, colname::String)
-    if length(dfs) == 1
-        full_df = dfs[1]
-    else
-        full_df = dfs[1]
-        for i in 2:length(dfs)
-            full_df = outerjoin(full_df, dfs[i], on = Symbol(colname))
-        end
-        full_df = rep_missings(full_df)
-    end
-    return full_df
-end
-
-function get_counts(cells, rep_name::String)
-    if length(cells) == 0
-        df = DataFrame(bc = Float64[], n = Int64[])
-    else
-        df = DataFrame(bc = map(x -> x.barcode, cells))
-        df = combine(groupby(df, :bc), nrow)
-    end
-
-    rename!(df, [:bc, Symbol(rep_name)])
-    return df
-end
-
-function update_track_vec!(kmc_out,
-    Nvec::Vector{Int64},
-    nS_vec::Vector{Int64}, nR_vec::Vector{Int64}, nE_vec::Vector{Int64},
-    tvec::Vector{Float64}, Pvec::Vector{Int64})
-
-    append!(Nvec, kmc_out.Nvec)
-    append!(nS_vec, kmc_out.Svec)
-    append!(nR_vec, kmc_out.Rvec)
-    append!(nE_vec, kmc_out.Evec)
-    append!(tvec, kmc_out.tvec)
-    append!(Pvec, kmc_out.Pvec)
 end
