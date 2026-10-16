@@ -106,19 +106,17 @@ function run_model_core_hybrid(model::ResDmg, state::ResDmgState, sim::SimParams
     t_pass_vec = normalize_t_pass(sim_eff.t_Pass)
     n_pass_eff = length(t_pass_vec) + 1
 
-    function build_birth_death_rates(de, idx, b_ref, d_ref, ::Val{B}, ::Val{D}; psi_fn = p -> 0.0) where {B,D}
-        safe_ratio(num, den) = abs(den) > eps(Float64) ? (num / den) : 0.0
-
+    function build_birth_death_rates(de, idx, ::Val{B}, ::Val{D}; psi_fn = p -> 0.0) where {B,D}
         function logistic_scale(u)
             return max(resdmg_logistic_factor(u, sim_eff.Cc), 0.0)
         end
 
         function birth_drug_adjustment(u, p)
-            return (safe_ratio(getproperty(p, B), b_ref) * p.Dc * clamp(u[RESDMG_GAM_INDEX], 0.0, 1.0) * (1 - psi_fn(p)))
+            return p.Dc * clamp(u[RESDMG_GAM_INDEX], 0.0, 1.0) * (1 - psi_fn(p))
         end
 
         function death_drug_adjustment(u, p)
-            return (safe_ratio(getproperty(p, D), d_ref) * p.Dc * clamp(u[RESDMG_GAM_INDEX], 0.0, 1.0) * (1 - psi_fn(p)))
+            return p.Dc * clamp(u[RESDMG_GAM_INDEX], 0.0, 1.0) * (1 - psi_fn(p))
         end
 
         function birth_d(u, p, t)
@@ -166,9 +164,9 @@ function run_model_core_hybrid(model::ResDmg, state::ResDmgState, sim::SimParams
     end
 
     S_division_activity, S_death_activity = build_birth_death_rates(
-        de, RESDMG_NS_INDEX, bS, dS, Val(:bS), Val(:dS))
+        de, RESDMG_NS_INDEX, Val(:bS), Val(:dS))
     R_division_activity, R_death_activity = build_birth_death_rates(
-        de, RESDMG_NR_INDEX, bR, dR, Val(:bR), Val(:dR); psi_fn = p -> p.psi)
+        de, RESDMG_NR_INDEX, Val(:bR), Val(:dR); psi_fn = p -> p.psi)
 
     S_symmetric_birth_activity(u, p, t) = S_division_activity(u, p, t) * (independent ? 1.0 : 1 - p.mu)
     S_asymmetric_R_birth_activity(u, p, t) = S_division_activity(u, p, t) * p.mu

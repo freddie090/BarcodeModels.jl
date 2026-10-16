@@ -10,6 +10,12 @@ test/hybrid_events.jl
 test/hybrid_solver_checks.jl
 test/transition_coupling.jl
 test/abm_general_fixes.jl
+test/drug_effect_boundaries.jl
+test/abm_population_cap.jl
+test/biological_rate_validation.jl
+test/lineage_ids.jl
+test/abm_general_fixes.jl
+test/abm_organization.jl
 model_specs/
 project_specs/
 projects/

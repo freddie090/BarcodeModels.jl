@@ -150,6 +150,7 @@ ResPop_ABM(; abm::ABMParams = ABMParams(), kwargs...) = ResPop_ABM(ResPopParams(
 
 ## Tests And Documentation
 
+- Keep `test/runtests.jl` for the user-maintained core package simulation tests; leave it untouched for development checks unless the user explicitly requests a core-suite change. New update/regression checks belong in standalone development files under `test/`, with matching `.gitignore` entries, and must remain outside the Git repository. Do not add development-test includes to `runtests.jl`.
 - Add or update tests when changing public constructors, dispatch, output keys, model state layouts, lineage outputs, or experiment orchestration.
 - Integration tests should exercise both `simulate_experiment` and `simulate_simple` when a new model is public.
 - ABM tests should use small `Nbuff`, `n0`, `Nmax`, and `tmax` values so they run quickly.

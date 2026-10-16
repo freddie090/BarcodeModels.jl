@@ -45,6 +45,8 @@ Read [../barcode-model-codebase/key_interfaces.md](../barcode-model-codebase/key
 
 ## Testing Requirements
 
+Keep new update/regression checks in standalone development files under `test/` and add their paths to `.gitignore`; development tests must remain outside the Git repository. Leave `test/runtests.jl` untouched unless the user explicitly requests a change to the core package simulation suite. Do not include development tests from that entry point. Load their fixture dependencies explicitly when execution is authorised, and report their coverage separately from the core suite.
+
 All new functionality should include appropriate tests. Select checks that verify the affected contracts; routine maintenance does not automatically require new ensembles or a full scientific revalidation.
 
 For new models or substantial extensions, at minimum verify:

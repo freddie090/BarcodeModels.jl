@@ -309,8 +309,17 @@ Naming note: existing concrete Julia type names such as `ResPop_ABM` encode both
 ## Tests
 
 - `test/runtests.jl`
-  - Main package test entry point used by `Pkg.test()` and the local runner. Inspect its actual includes before reporting coverage; a file's presence in `test/` does not mean it runs automatically.
-  - Includes `test/abm_organization.jl`, covering seeding, root-lineage metadata and birth ancestry, and public ABM passage/subsampling outputs.
+  - User-maintained core package simulation tests used by `Pkg.test()` and the local runner. Leave this file untouched unless the user explicitly requests a core-suite change. Do not include development tests here.
+
+- Other update/regression checks under `test/` are local development tests. Add new development-test paths to `.gitignore` and keep them outside the Git repository. Files already tracked by Git are not untracked merely by adding an ignore entry.
+- `test/abm_organization.jl` and `test/lineage_ids.jl`
+  - Development checks for seeding, root-lineage metadata, birth ancestry, passage/subsampling outputs and experiment-wide lineage ids.
+- `test/drug_effect_boundaries.jl`
+  - Development checks for additive drug effects at zero/near-zero baseline rates and ODE/jump drift accounting.
+- `test/abm_population_cap.jl`
+  - Development checks for immediate initial/cap-reaching ABM stops, phenotype/lineage output and cap-triggered passage timing.
+- `test/biological_rate_validation.jl`
+  - Development checks for finite/nonnegative biological rates, valid zero boundaries, coupling constraints and hybrid inference sentinels.
 
 - `test/hybrid_events.jl` and `test/hybrid_solver_checks.jl`
   - Focused hybrid accounting, classification, fractional-boundary, analytical, and solver checks; these may be local/ignored.
@@ -319,7 +328,7 @@ Naming note: existing concrete Julia type names such as `ResPop_ABM` encode both
 - `test/abm_general_fixes.jl`
   - Baseline validation and shared ordering, buffer, density, treatment, and envelope safeguards.
 
-At the time of this guidance update, `test/runtests.jl` does not include these four focused files. Do not describe its result as coverage of those files. Inspect their fixture dependencies and load them explicitly for relevant validation, or include them in the package entry point only as part of an authorised testing change.
+The core entry point does not include these development files. Do not describe its result as coverage of those files. Inspect their fixture dependencies and load them explicitly for relevant validation when execution is authorised.
 
 - `test/manual_tests.jl`, `test/manual_tests_evbc.jl`, `test/manual_test_helpers.jl`
   - Manual or exploratory test scripts and helpers.

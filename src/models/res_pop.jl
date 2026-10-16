@@ -103,20 +103,18 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
     # Helper builders are grouped here to keep repeated rate/callback logic centralized.
 
     # Build birth/death rate closures for a phenotype and drug mode.
-    function build_birth_death_rates(de, idx, b_ref, d_ref, ::Val{B}, ::Val{D}; psi_fn = p -> 0.0) where {B,D}
-        safe_ratio(num, den) = abs(den) > eps(Float64) ? (num / den) : 0.0
-
+    function build_birth_death_rates(de, idx, ::Val{B}, ::Val{D}; psi_fn = p -> 0.0) where {B,D}
         function logistic_scale(u)
             N = respop_total_population(u)
             return max(logistic_factor(N, sim_eff.Cc), 0.0)
         end
 
         function birth_drug_adjustment(u, p)
-            return (safe_ratio(getproperty(p, B), b_ref) * p.Dc * clamp(u[RESPOP_GAM_INDEX], 0.0, 1.0) * (1 - psi_fn(p)))
+            return p.Dc * clamp(u[RESPOP_GAM_INDEX], 0.0, 1.0) * (1 - psi_fn(p))
         end
 
         function death_drug_adjustment(u, p)
-            return (safe_ratio(getproperty(p, D), d_ref) * p.Dc * clamp(u[RESPOP_GAM_INDEX], 0.0, 1.0) * (1 - psi_fn(p)))
+            return p.Dc * clamp(u[RESPOP_GAM_INDEX], 0.0, 1.0) * (1 - psi_fn(p))
         end
 
         function birth_d(u, p, t)
@@ -164,11 +162,11 @@ function run_model_core_hybrid(model::ResPop, state::ResPopState, sim::SimParams
     end
 
     S_division_activity, S_death_activity = build_birth_death_rates(
-        de, RESPOP_NS_INDEX, bS, dS, Val(:bS), Val(:dS))
+        de, RESPOP_NS_INDEX, Val(:bS), Val(:dS))
     R_division_activity, R_death_activity = build_birth_death_rates(
-        de, RESPOP_NR_INDEX, bR, dR, Val(:bR), Val(:dR); psi_fn = p -> p.psi)
+        de, RESPOP_NR_INDEX, Val(:bR), Val(:dR); psi_fn = p -> p.psi)
     E_symmetric_birth_activity, E_death_activity = build_birth_death_rates(
-        de, RESPOP_NE_INDEX, bE, dE, Val(:bE), Val(:dE); psi_fn = p -> p.psi)
+        de, RESPOP_NE_INDEX, Val(:bE), Val(:dE); psi_fn = p -> p.psi)
 
     S_symmetric_birth_activity(u, p, t) = S_division_activity(u, p, t) * (independent ? 1.0 : 1 - p.mu)
     S_asymmetric_R_birth_activity(u, p, t) = S_division_activity(u, p, t) * p.mu

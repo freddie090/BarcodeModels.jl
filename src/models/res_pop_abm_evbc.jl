@@ -69,6 +69,11 @@ function _core_grow_kill_abm!(
     Evec = Int64[phen_counts.Ecount]
     Pvec = Int64[sim.Passage]
 
+    # A population already at the cap needs no event proposal or clock advance.
+    if Nt >= sim.Nmax
+        return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
+    end
+
     if bdmax == 0.0
         t = sim.tmax
         push!(tvec, t)
@@ -106,16 +111,6 @@ function _core_grow_kill_abm!(
 
         if t >= sim.tmax
             t = sim.tmax
-            break
-        end
-
-        if Nt >= sim.Nmax
-            push!(Nvec, Nt)
-            push!(tvec, t)
-            push!(Svec, phen_counts.Scount)
-            push!(Rvec, phen_counts.Rcount)
-            push!(Evec, phen_counts.Ecount)
-            push!(Pvec, sim.Passage)
             break
         end
 
@@ -195,6 +190,15 @@ function _core_grow_kill_abm!(
             live_vec[dead_pos] = 1
             dead_vec[dead_pos] = 0
             Nt += 1
+            if Nt >= sim.Nmax
+                push!(Nvec, Nt)
+                push!(tvec, t)
+                push!(Svec, phen_counts.Scount)
+                push!(Rvec, phen_counts.Rcount)
+                push!(Evec, phen_counts.Ecount)
+                push!(Pvec, sim.Passage)
+                return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
+            end
         end
 
         if bmax <= ran < bmax + cell_d

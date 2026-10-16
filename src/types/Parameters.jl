@@ -81,6 +81,10 @@ ResDmgParams(b, d, rho, mu, sig, del, ome, zet_S, zet_R, Dc, k, psi, drug_effect
     ResDmgParams(; b, d, rho, mu, sig, del, ome, zet_S, zet_R, Dc, k, psi, drug_effect)
 
 function validate_model_params(params::ResPopParams)
+    for name in (:b, :d, :Dc, :k)
+        rate = getproperty(params, name)
+        isfinite(rate) && rate >= 0.0 || error("$(name) must be finite and >= 0.")
+    end
     params.b > params.d || error("Baseline population growth rate will lead to contraction or no growth; require b > d.")
     0.0 <= params.rho <= 1.0 || error("rho must be between 0 and 1.")
     normalize_transition_coupling(params.transition_coupling)
@@ -96,7 +100,7 @@ function validate_model_params(params::ResPopParams)
         end
     end
     0.0 <= params.del <= 1.0 || error("del must be between 0 and 1.")
-    params.psi <= 1.0 || error("psi must be <= 1.0.")
+    isfinite(params.psi) && params.psi <= 1.0 || error("psi must be finite and <= 1.0.")
     params.drug_effect in RESPOP_DRUG_EFFECTS || error("ResPop drug_effect must be :d, :b, or :c")
     if params.drug_effect === :b
         params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")
@@ -117,6 +121,10 @@ function validate_model_params_strict(params::ResPopParams)
 end
 
 function validate_model_params(params::ResDmgParams)
+    for name in (:b, :d, :Dc, :k, :ome, :zet_S, :zet_R)
+        rate = getproperty(params, name)
+        isfinite(rate) && rate >= 0.0 || error("$(name) must be finite and >= 0.")
+    end
     params.b > params.d || error("Baseline population growth rate will lead to contraction or no growth; require b > d.")
     0.0 <= params.rho <= 1.0 || error("rho must be between 0 and 1.")
     normalize_transition_coupling(params.transition_coupling)
@@ -130,10 +138,7 @@ function validate_model_params(params::ResDmgParams)
         end
     end
     0.0 <= params.del <= 1.0 || error("del must be between 0 and 1.")
-    params.psi <= 1.0 || error("psi must be <= 1.0.")
-    params.ome >= 0.0 || error("ome must be >= 0.")
-    params.zet_S >= 0.0 || error("zet_S must be >= 0.")
-    params.zet_R >= 0.0 || error("zet_R must be >= 0.")
+    isfinite(params.psi) && params.psi <= 1.0 || error("psi must be finite and <= 1.0.")
     params.drug_effect in RESDMG_DRUG_EFFECTS || error("ResDmg drug_effect must be :d, :b, or :c")
     if params.drug_effect === :b
         params.Dc <= params.b || error("When drug_effect == :b, Dc must be <= b.")

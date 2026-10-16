@@ -118,6 +118,8 @@ Independent conversions have no birth or density multiplier. S/R conversions hav
 
 Each complete event has one source, one full biological activity, and one population effect. Coupled daughter production adds a cell; conversion conserves total population during ordinary event execution. Explicit phenotype ODE equations and jump handlers must implement the same effects. Do not restore the superseded splitting of biological parameters between `*_o` and `*_j` components.
 
+For undamaged cells, the per-cell drug term is `Dc * clamp(gamma, 0, 1)`, attenuated by `1-psi` for resistant/escape phenotypes. It is additive and does not contain a ratio of baseline birth or death rates. In `:d` mode it adds mortality even when baseline death is zero; in `:b` mode it reduces birth under the existing nonnegative-birth constraints; in `:c` mode it reduces birth to zero and adds any remaining suppression to mortality, including for zero-birth cells. Apply the existing density factor after these adjustments. ResDmg damaged-cell mortality remains `d + Dc` with density scaling and no additional exposure term.
+
 ### Hybrid Classification And Updates
 
 Classify each event independently using:
@@ -179,10 +181,11 @@ These numerical and buffer contracts apply to both coupling modes in standard AB
 
 - `order_cells!` preserves every live cell and its metadata in empty, full, and mixed/unsorted buffers; cleanup replaces only dead cells.
 - Check and select a dead slot only inside an accepted birth branch. Non-birth events need no spare slot. A birth without space produces an informative buffer error.
+- Stop at `Nmax` before drawing a proposal when the initial population already meets/exceeds the cap. A birth that reaches the cap returns immediately after updating cells/counts and recording the post-birth population at that division time. Cap returns retain the exact time in both `tvec` and `fin_t`, allowing passage handling to resume at the correct event time without an extra waiting-time draw.
 - Fixed full-run proposal bounds cover all phenotype rates, fitness costs, treatment states, and ResDmg damaged-cell death even without treatment. The same envelope governs exponential waiting times and disjoint event-selection intervals, so at most one biological event executes per proposal.
 - Only independent mode adds conversion bounds: `max(mu, sig + al)` for ResPop or `max(mu, sig)` for ResDmg. This sum bounds competing rates; it is not a probability constraint.
 - Clamp density-scaled birth/death factors to zero above capacity. Evaluate treatment-dependent activity at the proposed event time. Preserve the existing concentration lookup and onset-zero initialisation, including treatment-off precedence for simultaneous on/off at zero.
-- Handle a zero proposal envelope by finishing at the requested horizon with unchanged populations. This is defensive core behaviour, not a reason to bypass public biological validation.
+- Below `Nmax`, handle a zero proposal envelope by finishing at the requested horizon with unchanged populations. This is defensive core behaviour, not a reason to bypass public biological validation.
 - Independent conversion updates phenotype flags and counts only; it preserves total live population, barcode, alive status, and live/dead position vectors. Independent births reuse existing birth helpers with phenotype-outcome probabilities disabled.
 
 ## EvBC Lineage Interface
@@ -232,6 +235,8 @@ Biological parameter structs should:
 - Have validation methods that check biological constraints.
 
 For current ResPop/ResDmg models, validate `b > d` for positive baseline growth in all six constructors; treatment-induced contraction remains allowed. Coupled probabilities retain their bounds, including ResPop's `sig + al <= 1`. Independent rates must be finite and nonnegative, may exceed one, and have no probability sum constraint. Preserve stricter ABM validation and existing drug-effect restrictions.
+
+The common biological validators require finite, nonnegative `b`, `d`, `Dc` and `k`; ResDmg also requires finite, nonnegative `ome`, `zet_S` and `zet_R`. Zero rates remain valid subject to `b > d` and the existing drug-mode constraints. `psi` must be finite and at most 1; finite negative values remain available to the hybrid experiment's existing inference-sentinel path. These checks are applied by model construction; biological parameter structs retain their existing normalisation-only constructors.
 
 Accept the two coupling symbols and their exact string equivalents; reject other modes. Preserve the mode through parameter-copy helpers, expansion, replicate setup, drug-effect overrides, and primitive wrappers. Existing old-arity positional biological-parameter constructors forward with birth coupling as the default.
 
