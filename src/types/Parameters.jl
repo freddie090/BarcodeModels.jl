@@ -325,14 +325,6 @@ struct ExperimentParams
     n_rep::Int64
     drug_treatment::Bool
     full_sol::Bool
-    run_IC::Bool
-    IC_n0::Int64
-    IC_tmax::Float64
-    IC_treat_on::Float64
-    run_colony::Bool
-    nCol::Int64
-    tCol::Float64
-    ColNmax::Int64
 end
 
 struct SimpleSimParams
@@ -413,8 +405,7 @@ end
 function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                                     treat_ons, treat_offs, t_keep, Nswitch,
                                     Aswitch, save_at, n_rep, drug_treatment,
-                                    full_sol, run_IC, IC_n0, IC_tmax,
-                                    IC_treat_on, run_colony, nCol, tCol, ColNmax)
+                                    full_sol)
     n0 isa Integer || error("n0 must be an integer.")
     n0 > 0 || error("n0 must be > 0.")
 
@@ -462,26 +453,6 @@ function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
 
     drug_treatment isa Bool || error("drug_treatment must be Bool.")
     full_sol isa Bool || error("full_sol must be Bool.")
-    run_IC isa Bool || error("run_IC must be Bool.")
-
-    IC_n0 isa Integer || error("IC_n0 must be an integer.")
-    IC_n0 > 0 || error("IC_n0 must be > 0.")
-
-    IC_tmax isa Real || error("IC_tmax must be a number.")
-    IC_tmax > 0 || error("IC_tmax must be > 0.")
-
-    IC_treat_on isa Real || error("IC_treat_on must be a number.")
-
-    run_colony isa Bool || error("run_colony must be Bool.")
-
-    nCol isa Integer || error("nCol must be an integer.")
-    nCol > 0 || error("nCol must be > 0.")
-
-    tCol isa Real || error("tCol must be a number.")
-    tCol > 0 || error("tCol must be > 0.")
-
-    ColNmax isa Integer || error("ColNmax must be an integer.")
-    ColNmax > 0 || error("ColNmax must be > 0.")
 
     return nothing
 end
@@ -490,9 +461,7 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
                           treat_ons, treat_offs, t_keep, Nswitch,
                           Aswitch=1000.0,
                           save_at=0.5, n_rep=4, drug_treatment=true,
-                          full_sol=false, run_IC=false, IC_n0=1000,
-                          IC_tmax=4.0, IC_treat_on=1.0, run_colony=false,
-                          nCol=1000, tCol=12.0, ColNmax=50)
+                          full_sol=false)
     validate_experiment_params(
         n0 = n0,
         t_exp = t_exp,
@@ -509,15 +478,7 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         save_at = save_at,
         n_rep = n_rep,
         drug_treatment = drug_treatment,
-        full_sol = full_sol,
-        run_IC = run_IC,
-        IC_n0 = IC_n0,
-        IC_tmax = IC_tmax,
-        IC_treat_on = IC_treat_on,
-        run_colony = run_colony,
-        nCol = nCol,
-        tCol = tCol,
-        ColNmax = ColNmax
+        full_sol = full_sol
     )
 
     if (tmax isa AbstractVector) && !(t_Pass isa AbstractVector && isempty(t_Pass))
@@ -542,15 +503,7 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         Float64(save_at),
         Int64(n_rep),
         Bool(drug_treatment),
-        Bool(full_sol),
-        Bool(run_IC),
-        Int64(IC_n0),
-        Float64(IC_tmax),
-        Float64(IC_treat_on),
-        Bool(run_colony),
-        Int64(nCol),
-        Float64(tCol),
-        Int64(ColNmax)
+        Bool(full_sol)
     )
 end
 

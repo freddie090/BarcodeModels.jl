@@ -287,26 +287,12 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     sub_sample_cells = _kw(kwargs, :sub_sample_cells, model.abm.sub_sample_cells)
     K = _kw(kwargs, :K, model.abm.K)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
-    use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
-    bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
-    run_IC = _kw(kwargs, :run_IC, exp.run_IC)
-    IC_n0 = _kw(kwargs, :IC_n0, exp.IC_n0)
-    IC_tmax = _kw(kwargs, :IC_tmax, exp.IC_tmax)
-    IC_treat_on = _kw(kwargs, :IC_treat_on, exp.IC_treat_on)
-    run_colony = _kw(kwargs, :run_colony, exp.run_colony)
-    nCol = _kw(kwargs, :nCol, exp.nCol)
-    tCol = _kw(kwargs, :tCol, exp.tCol)
-    ColNmax = _kw(kwargs, :ColNmax, exp.ColNmax)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
-    @assert !(run_IC && run_colony) "Cannot run IC and colony assays at the same time."
     _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
     _validate_tmax_length(exp.tmax, n_rep)
-
-    barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
-                       bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
 
     n_pass_eff = exp.tmax isa AbstractVector ? 1 : (length(_passage_times(exp.t_Pass, Float64(exp.tmax))) + 1)
 
@@ -327,64 +313,9 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     sub_lin_df_outs = DataFrame[]
     sim_dfs = DataFrame[]
 
-    if !just_lin && run_colony
-        col_cells_tx1 = seed_cells(nCol, model.params.rho, Int64(1e6); barcode_kwargs...)
-        col_cells_tx0 = seed_cells(nCol, model.params.rho, Int64(1e6); barcode_kwargs...)
-        col_sim = ABMSimParams(
-            t0 = 0.0,
-            tmax = tCol,
-            Nmax = exp.Nmax,
-            Cc = exp.Cc,
-            treat_ons = [1.0],
-            treat_offs = [1000.0],
-            dt_save_at = dt_save_at,
-            R_real = R_real,
-            t_frac = t_frac,
-            Passage = 1,
-            drug_effect = de
-        )
-
-        run_model_core_abm(model_eff, ResPopABMState(col_cells_tx1), col_sim; treat = true)
-        run_model_core_abm(model_eff, ResPopABMState(col_cells_tx0), col_sim; treat = false)
-
-        col_tx1_bcs = get_counts(alive_cells(col_cells_tx1), "col_tx1")
-        col_tx0_bcs = get_counts(alive_cells(col_cells_tx0), "col_tx0")
-        tx1_cols = sum(col_tx1_bcs[!, :col_tx1] .> ColNmax)
-        tx0_cols = sum(col_tx0_bcs[!, :col_tx0] .> ColNmax)
-        col_prop = tx0_cols == 0 ? 0.0 : tx1_cols / tx0_cols
-
-        append!(fin_t_outs, tCol)
-        append!(fin_u_outs, col_prop)
-    end
-
     nseed_last = _nseed_last(exp.Nseed)
     for i in 1:n_rep
         rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
-
-        if !just_lin && run_IC
-            IC_cells_1 = seed_cells(IC_n0, model.params.rho, model.abm.Nbuff; barcode_kwargs...)
-            IC_cells_0 = seed_cells(IC_n0, model.params.rho, model.abm.Nbuff; barcode_kwargs...)
-
-            IC_sim_tx1 = _run_abm_passage_experiment!(
-                model_eff, IC_cells_1;
-                t0 = 0.0, tmax = IC_tmax, t_Pass = 1000.0,
-                Nseed = IC_n0, Nmax = exp.Nmax, Cc = exp.Cc,
-                treat_ons = [IC_treat_on], treat_offs = [100.0],
-                dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
-                R_real = R_real, t_frac = t_frac, rep = i,
-                treat = true, drug_effect = de
-            )
-
-            IC_sim_tx0 = _run_abm_passage_experiment!(
-                model_eff, IC_cells_0;
-                t0 = 0.0, tmax = IC_tmax, t_Pass = 1000.0,
-                Nseed = IC_n0, Nmax = exp.Nmax, Cc = exp.Cc,
-                treat_ons = [IC_treat_on], treat_offs = [100.0],
-                dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
-                R_real = R_real, t_frac = t_frac, rep = i,
-                treat = false, drug_effect = de
-            )
-        end
 
         extend_with_dead_cells!(rep_cells[i], model.abm.Nbuff, make_dead_cell)
 
@@ -415,18 +346,11 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
         end
 
         if !just_lin
-            t_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_pass_eff)
-            u_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_pass_eff)
-
-            if run_IC
-                t_outs[1] = last(IC_sim_tx1["tvec"])
-                u_outs[1] = Float64(round(last(IC_sim_tx1["Nvec"])))
-                t_outs[2] = last(IC_sim_tx0["tvec"])
-                u_outs[2] = Float64(round(last(IC_sim_tx0["Nvec"])))
-            end
+            t_outs = Vector{Float64}(undef, length(exp.t_keep) + n_pass_eff)
+            u_outs = Vector{Float64}(undef, length(exp.t_keep) + n_pass_eff)
 
             for j in 1:length(exp.t_keep)
-                idx = j + (run_IC * 2)
+                idx = j
                 if !(exp.t_keep[j] in sim["tvec"])
                     t_closest_pos = findmin(abs.(sim["tvec"] .- exp.t_keep[j]))[2]
                     t_outs[idx] = sim["tvec"][t_closest_pos]
@@ -439,7 +363,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
             end
 
             for j in 1:n_pass_eff
-                idx = length(exp.t_keep) + j + (run_IC * 2)
+                idx = length(exp.t_keep) + j
                 if sum(sim["Pvec"] .== j) > 0
                     t_realised_pos = findlast(sim["Pvec"] .== j)
                     t_outs[idx] = sim["tvec"][t_realised_pos]
@@ -764,26 +688,12 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
     sub_sample_cells = _kw(kwargs, :sub_sample_cells, model.abm.sub_sample_cells)
     K = _kw(kwargs, :K, model.abm.K)
     skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib)
-    use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)
     bc_unif = _kw(kwargs, :bc_unif, model.abm.bc_unif)
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
-    bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
-    run_IC = _kw(kwargs, :run_IC, exp.run_IC)
-    IC_n0 = _kw(kwargs, :IC_n0, exp.IC_n0)
-    IC_tmax = _kw(kwargs, :IC_tmax, exp.IC_tmax)
-    IC_treat_on = _kw(kwargs, :IC_treat_on, exp.IC_treat_on)
-    run_colony = _kw(kwargs, :run_colony, exp.run_colony)
-    nCol = _kw(kwargs, :nCol, exp.nCol)
-    tCol = _kw(kwargs, :tCol, exp.tCol)
-    ColNmax = _kw(kwargs, :ColNmax, exp.ColNmax)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
-    @assert !(run_IC && run_colony) "Cannot run IC and colony assays at the same time."
     _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
     _validate_tmax_length(exp.tmax, n_rep)
-
-    barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
-                       bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
 
     n_pass_eff = exp.tmax isa AbstractVector ? 1 : (length(_passage_times(exp.t_Pass, Float64(exp.tmax))) + 1)
 
@@ -804,64 +714,9 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
     sub_lin_df_outs = DataFrame[]
     sim_dfs = DataFrame[]
 
-    if !just_lin && run_colony
-        col_cells_tx1 = seed_resdmg_cells(nCol, model.params.rho, Int64(1e6); barcode_kwargs...)
-        col_cells_tx0 = seed_resdmg_cells(nCol, model.params.rho, Int64(1e6); barcode_kwargs...)
-        col_sim = ABMSimParams(
-            t0 = 0.0,
-            tmax = tCol,
-            Nmax = exp.Nmax,
-            Cc = exp.Cc,
-            treat_ons = [1.0],
-            treat_offs = [1000.0],
-            dt_save_at = dt_save_at,
-            R_real = R_real,
-            t_frac = t_frac,
-            Passage = 1,
-            drug_effect = de
-        )
-
-        run_model_core_abm(model_eff, ResDmgABMState(col_cells_tx1), col_sim; treat = true)
-        run_model_core_abm(model_eff, ResDmgABMState(col_cells_tx0), col_sim; treat = false)
-
-        col_tx1_bcs = get_counts(alive_cells(col_cells_tx1), "col_tx1")
-        col_tx0_bcs = get_counts(alive_cells(col_cells_tx0), "col_tx0")
-        tx1_cols = sum(col_tx1_bcs[!, :col_tx1] .> ColNmax)
-        tx0_cols = sum(col_tx0_bcs[!, :col_tx0] .> ColNmax)
-        col_prop = tx0_cols == 0 ? 0.0 : tx1_cols / tx0_cols
-
-        append!(fin_t_outs, tCol)
-        append!(fin_u_outs, col_prop)
-    end
-
     nseed_last = _nseed_last(exp.Nseed)
     for i in 1:n_rep
         rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
-
-        if !just_lin && run_IC
-            IC_cells_1 = seed_resdmg_cells(IC_n0, model.params.rho, model.abm.Nbuff; barcode_kwargs...)
-            IC_cells_0 = seed_resdmg_cells(IC_n0, model.params.rho, model.abm.Nbuff; barcode_kwargs...)
-
-            IC_sim_tx1 = _run_abm_passage_experiment!(
-                model_eff, IC_cells_1;
-                t0 = 0.0, tmax = IC_tmax, t_Pass = 1000.0,
-                Nseed = IC_n0, Nmax = exp.Nmax, Cc = exp.Cc,
-                treat_ons = [IC_treat_on], treat_offs = [100.0],
-                dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
-                R_real = R_real, t_frac = t_frac, rep = i,
-                treat = true, drug_effect = de
-            )
-
-            IC_sim_tx0 = _run_abm_passage_experiment!(
-                model_eff, IC_cells_0;
-                t0 = 0.0, tmax = IC_tmax, t_Pass = 1000.0,
-                Nseed = IC_n0, Nmax = exp.Nmax, Cc = exp.Cc,
-                treat_ons = [IC_treat_on], treat_offs = [100.0],
-                dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
-                R_real = R_real, t_frac = t_frac, rep = i,
-                treat = false, drug_effect = de
-            )
-        end
 
         extend_with_dead_cells!(rep_cells[i], model.abm.Nbuff, make_dead_resdmg_cell)
 
@@ -893,18 +748,11 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
         end
 
         if !just_lin
-            t_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_pass_eff)
-            u_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_pass_eff)
-
-            if run_IC
-                t_outs[1] = last(IC_sim_tx1["tvec"])
-                u_outs[1] = Float64(round(last(IC_sim_tx1["Nvec"])))
-                t_outs[2] = last(IC_sim_tx0["tvec"])
-                u_outs[2] = Float64(round(last(IC_sim_tx0["Nvec"])))
-            end
+            t_outs = Vector{Float64}(undef, length(exp.t_keep) + n_pass_eff)
+            u_outs = Vector{Float64}(undef, length(exp.t_keep) + n_pass_eff)
 
             for j in 1:length(exp.t_keep)
-                idx = j + (run_IC * 2)
+                idx = j
                 if !(exp.t_keep[j] in sim["tvec"])
                     t_closest_pos = findmin(abs.(sim["tvec"] .- exp.t_keep[j]))[2]
                     t_outs[idx] = sim["tvec"][t_closest_pos]
@@ -917,7 +765,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
             end
 
             for j in 1:n_pass_eff
-                idx = length(exp.t_keep) + j + (run_IC * 2)
+                idx = length(exp.t_keep) + j
                 if sum(sim["Pvec"] .== j) > 0
                     t_realised_pos = findlast(sim["Pvec"] .== j)
                     t_outs[idx] = sim["tvec"][t_realised_pos]

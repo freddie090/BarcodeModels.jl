@@ -103,7 +103,7 @@ Do not put full experiment orchestration inside `run_model_core_hybrid`.
 
 ### Resistant Fitness-Cost Option
 
-`simulate_simple` and `simulate_experiment` accept `R_real = "l"` for both model families and all Hybrid, ABM, and EvBC classes. Only the strings `"b"`, `"d"`, and `"l"` are valid. `SimParams`, `ABMSimParams`, expansion helpers and legacy simulation wrappers also default to `"l"`; keep the setting through treatment overrides, staged expansion, replicate/passaging runs and IC/colony assays.
+`simulate_simple` and `simulate_experiment` accept `R_real = "l"` for both model families and all Hybrid, ABM, and EvBC classes. Only the strings `"b"`, `"d"`, and `"l"` are valid. `SimParams`, `ABMSimParams`, expansion helpers and legacy simulation wrappers also default to `"l"`; keep the setting through treatment overrides, staged expansion, replicate/passaging runs.
 
 For undamaged R, before treatment and density scaling, `"b"` gives `(b-(b-d)*del, d)`, `"d"` gives `(b, d+(b-d)*del)`, and `"l"` gives `(b*(1-del), d*(1-del))`. Keep these biological equations visible in each model's rate definitions. All give baseline birth-minus-death `(b-d)*(1-del)`; turnover and coupled daughter-production rates differ. E and damaged-state rules retain their existing formulas.
 

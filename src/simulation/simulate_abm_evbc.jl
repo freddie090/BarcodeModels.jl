@@ -397,10 +397,6 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
     bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
-    run_IC = _kw(kwargs, :run_IC, exp.run_IC)
-    run_colony = _kw(kwargs, :run_colony, exp.run_colony)
-
-    @assert !(run_IC || run_colony) "run_IC and run_colony are not implemented yet for ResPop_ABM_EvBC."
 
     _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
     _validate_tmax_length(exp.tmax, n_rep)
@@ -534,10 +530,6 @@ function _simulate_experiment_abm(model::ResDmg_ABM_EvBC, exp::ExperimentParams;
     Nbc = _kw(kwargs, :Nbc, model.abm.Nbc)
     bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs)
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
-    run_IC = _kw(kwargs, :run_IC, exp.run_IC)
-    run_colony = _kw(kwargs, :run_colony, exp.run_colony)
-
-    @assert !(run_IC || run_colony) "run_IC and run_colony are not implemented yet for ResDmg_ABM_EvBC."
 
     _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
     _validate_tmax_length(exp.tmax, n_rep)

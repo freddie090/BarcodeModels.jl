@@ -17,6 +17,7 @@ test/resistant_fitness_options.jl
 test/lineage_ids.jl
 test/abm_general_fixes.jl
 test/abm_organization.jl
+test/experiment_cleanup.jl
 model_specs/
 project_specs/
 projects/

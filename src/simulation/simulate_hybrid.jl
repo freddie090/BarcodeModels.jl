@@ -5,17 +5,8 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
     n_rep = _kw(kwargs, :n_rep, exp.n_rep)
     drug_treatment = _kw(kwargs, :drug_treatment, exp.drug_treatment)
     full_sol = _kw(kwargs, :full_sol, exp.full_sol)
-    run_IC = _kw(kwargs, :run_IC, exp.run_IC)
-    IC_n0 = _kw(kwargs, :IC_n0, exp.IC_n0)
-    IC_tmax = _kw(kwargs, :IC_tmax, exp.IC_tmax)
-    IC_treat_on = _kw(kwargs, :IC_treat_on, exp.IC_treat_on)
-    run_colony = _kw(kwargs, :run_colony, exp.run_colony)
-    nCol = _kw(kwargs, :nCol, exp.nCol)
-    tCol = _kw(kwargs, :tCol, exp.tCol)
-    ColNmax = _kw(kwargs, :ColNmax, exp.ColNmax)
     de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, params.drug_effect))
 
-    @assert !(run_IC && run_colony) "Cannot run IC and colony assays at the same time."
     _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
     _validate_tmax_length(exp.tmax, n_rep)
 
@@ -29,7 +20,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
     end
     n_pass_eff = length(normalize_t_pass(exp.t_Pass)) + 1
 
-    n_pop_obsv = n_rep * ((run_IC * 2) + length(exp.t_keep) + n_pass_eff) + (run_colony * 1)
+    n_pop_obsv = n_rep * (length(exp.t_keep) + n_pass_eff)
     validate_resistant_birth_drug_effect(params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
 
@@ -157,82 +148,8 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
     fin_u_outs = Float64[]
     sol_dfs = DataFrame[]
 
-    if run_colony
-        tx1_cols = 0
-        tx0_cols = 0
-
-        col_nR = max(Float64(round(params.rho * exp.n0)), 0.0)
-        col_nS = max((exp.n0 - col_nR), 0.0)
-        col_nE = 0.0
-
-        for j in 1:nCol
-            total_cells = max(col_nS + col_nR + col_nE, 1e-10)
-            cell_probs = [col_nS, col_nR, col_nE] ./ total_cells
-            if any(cell_probs .< 0) || sum(cell_probs) == 0
-                error("Invalid probability vector: $(cell_probs)")
-            end
-            sampled_phenos = zeros(Float64, 3)
-            sampled_phenos[rand(Categorical(cell_probs))] = 1.0
-
-            col_sim = SimParams(
-                n0 = 1,
-                t0 = 0.0,
-                tmax = tCol,
-                t_Pass = -1.0,
-                Nmax = ColNmax + 10,
-                Cc = exp.Cc,
-                Nswitch = exp.Nswitch,
-                Aswitch = exp.Aswitch,
-                R_real = R_real,
-                treat_ons = [1.0],
-                treat_offs = [100.0],
-                save_at = save_at,
-                treat = true
-            )
-            col_state = ResPopState(sampled_phenos[1], sampled_phenos[2], sampled_phenos[3];
-                                   gam = 0.0, pass_num = 1)
-            col_sol_tx1 = run_model_core_hybrid(model_eff, col_state, col_sim; treat = true)
-            col_sol_tx0 = run_model_core_hybrid(model_eff, col_state, col_sim; treat = false)
-
-            if round(sum(last(respop_pop_fun.(col_sol_tx1.u)))) >= ColNmax
-                tx1_cols += 1
-            end
-            if round(sum(last(respop_pop_fun.(col_sol_tx0.u)))) >= ColNmax
-                tx0_cols += 1
-            end
-        end
-
-        col_prop = tx0_cols == 0 ? 0.0 : (tx1_cols / tx0_cols)
-        append!(fin_t_outs, tCol)
-        append!(fin_u_outs, col_prop)
-    end
-
     for i in 1:n_rep
         rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
-
-        if run_IC
-            ic_nR = Float64(round(params.rho * IC_n0))
-            ic_nS = IC_n0 - ic_nR
-            ic_nE = 0.0
-            ic_state = ResPopState(ic_nS, ic_nR, ic_nE; gam = 0.0, pass_num = 1)
-            ic_sim = SimParams(
-                n0 = IC_n0,
-                t0 = 0.0,
-                tmax = IC_tmax,
-                t_Pass = -1.0,
-                Nmax = exp.Nmax,
-                Cc = exp.Cc,
-                Nswitch = exp.Nswitch,
-                Aswitch = exp.Aswitch,
-                R_real = R_real,
-                treat_ons = [IC_treat_on],
-                treat_offs = [100.0],
-                save_at = save_at,
-                treat = true
-            )
-            IC_sol_tx1 = run_model_core_hybrid(model_eff, ic_state, ic_sim; treat = true)
-            IC_sol_tx0 = run_model_core_hybrid(model_eff, ic_state, ic_sim; treat = false)
-        end
 
         sim = SimParams(
             n0 = nseed_last,
@@ -268,36 +185,29 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
         end
 
         total_pop = map(u -> sum(respop_pop_fun(u)), sol.u)
-        t_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_pass_eff)
-        u_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_pass_eff)
-
-        if run_IC
-            t_outs[1] = last(IC_sol_tx1.t)
-            u_outs[1] = Float64(round(sum(last(respop_pop_fun.(IC_sol_tx1.u)))))
-            t_outs[2] = last(IC_sol_tx0.t)
-            u_outs[2] = Float64(round(sum(last(respop_pop_fun.(IC_sol_tx0.u)))))
-        end
+        t_outs = Vector{Float64}(undef, length(exp.t_keep) + n_pass_eff)
+        u_outs = Vector{Float64}(undef, length(exp.t_keep) + n_pass_eff)
 
         for j in 1:length(exp.t_keep)
             if !(exp.t_keep[j] in sol.t)
                 t_closest_pos = findmin(abs.(sol.t .- exp.t_keep[j]))[2]
-                t_outs[j + (run_IC * 2)] = sol.t[t_closest_pos]
-                u_outs[j + (run_IC * 2)] = Float64(round(total_pop[t_closest_pos]))
+                t_outs[j] = sol.t[t_closest_pos]
+                u_outs[j] = Float64(round(total_pop[t_closest_pos]))
             else
                 t_realised_pos = findlast(sol.t .== exp.t_keep[j])
-                t_outs[j + (run_IC * 2)] = sol.t[t_realised_pos]
-                u_outs[j + (run_IC * 2)] = Float64(round(total_pop[t_realised_pos]))
+                t_outs[j] = sol.t[t_realised_pos]
+                u_outs[j] = Float64(round(total_pop[t_realised_pos]))
             end
         end
 
         for j in 1:n_pass_eff
             if sum(respop_pass_fun.(sol.u) .== j) > 0
                 t_realised_pos = findlast(respop_pass_fun.(sol.u) .== j)
-                idx = length(exp.t_keep) + j + (run_IC * 2)
+                idx = length(exp.t_keep) + j
                 t_outs[idx] = sol.t[t_realised_pos]
                 u_outs[idx] = Float64(round(total_pop[t_realised_pos]))
             else
-                idx = length(exp.t_keep) + j + (run_IC * 2)
+                idx = length(exp.t_keep) + j
                 t_outs[idx] = t_outs[idx - 1]
                 u_outs[idx] = u_outs[idx - 1]
             end
@@ -322,17 +232,8 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
     n_rep = _kw(kwargs, :n_rep, exp.n_rep)
     drug_treatment = _kw(kwargs, :drug_treatment, exp.drug_treatment)
     full_sol = _kw(kwargs, :full_sol, exp.full_sol)
-    run_IC = _kw(kwargs, :run_IC, exp.run_IC)
-    IC_n0 = _kw(kwargs, :IC_n0, exp.IC_n0)
-    IC_tmax = _kw(kwargs, :IC_tmax, exp.IC_tmax)
-    IC_treat_on = _kw(kwargs, :IC_treat_on, exp.IC_treat_on)
-    run_colony = _kw(kwargs, :run_colony, exp.run_colony)
-    nCol = _kw(kwargs, :nCol, exp.nCol)
-    tCol = _kw(kwargs, :tCol, exp.tCol)
-    ColNmax = _kw(kwargs, :ColNmax, exp.ColNmax)
     de = normalize_resdmg_drug_effect(_kw(kwargs, :drug_effect, params.drug_effect))
 
-    @assert !(run_IC && run_colony) "Cannot run IC and colony assays at the same time."
     _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
     _validate_tmax_length(exp.tmax, n_rep)
 
@@ -346,7 +247,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
     end
     n_pass_eff = length(normalize_t_pass(exp.t_Pass)) + 1
 
-    n_pop_obsv = n_rep * ((run_IC * 2) + length(exp.t_keep) + n_pass_eff) + (run_colony * 1)
+    n_pop_obsv = n_rep * (length(exp.t_keep) + n_pass_eff)
     validate_resistant_birth_drug_effect(params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
 
@@ -490,84 +391,8 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
     fin_u_outs = Float64[]
     sol_dfs = DataFrame[]
 
-    if run_colony
-        tx1_cols = 0
-        tx0_cols = 0
-
-        col_nR = max(Float64(round(params.rho * exp.n0)), 0.0)
-        col_nS = max((exp.n0 - col_nR), 0.0)
-        col_nDS = 0.0
-        col_nDR = 0.0
-
-        for j in 1:nCol
-            total_cells = max(col_nS + col_nDS + col_nDR + col_nR, 1e-10)
-            cell_probs = [col_nS, col_nDS, col_nDR, col_nR] ./ total_cells
-            if any(cell_probs .< 0) || sum(cell_probs) == 0
-                error("Invalid probability vector: $(cell_probs)")
-            end
-            sampled_phenos = zeros(Float64, 4)
-            sampled_phenos[rand(Categorical(cell_probs))] = 1.0
-
-            col_sim = SimParams(
-                n0 = 1,
-                t0 = 0.0,
-                tmax = tCol,
-                t_Pass = -1.0,
-                Nmax = ColNmax + 10,
-                Cc = exp.Cc,
-                Nswitch = exp.Nswitch,
-                Aswitch = exp.Aswitch,
-                R_real = R_real,
-                treat_ons = [1.0],
-                treat_offs = [100.0],
-                save_at = save_at,
-                treat = true
-            )
-            col_state = ResDmgState(sampled_phenos[1], sampled_phenos[2], sampled_phenos[3], sampled_phenos[4];
-                                    gam = 0.0, pass_num = 1)
-            col_sol_tx1 = run_model_core_hybrid(model_eff, col_state, col_sim; treat = true)
-            col_sol_tx0 = run_model_core_hybrid(model_eff, col_state, col_sim; treat = false)
-
-            if round(sum(last(resdmg_pop_fun.(col_sol_tx1.u)))) >= ColNmax
-                tx1_cols += 1
-            end
-            if round(sum(last(resdmg_pop_fun.(col_sol_tx0.u)))) >= ColNmax
-                tx0_cols += 1
-            end
-        end
-
-        col_prop = tx0_cols == 0 ? 0.0 : (tx1_cols / tx0_cols)
-        append!(fin_t_outs, tCol)
-        append!(fin_u_outs, col_prop)
-    end
-
     for i in 1:n_rep
         rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
-
-        if run_IC
-            ic_nR = Float64(round(params.rho * IC_n0))
-            ic_nS = IC_n0 - ic_nR
-            ic_nDS = 0.0
-            ic_nDR = 0.0
-            ic_state = ResDmgState(ic_nS, ic_nDS, ic_nDR, ic_nR; gam = 0.0, pass_num = 1)
-            ic_sim = SimParams(
-                n0 = IC_n0,
-                t0 = 0.0,
-                tmax = IC_tmax,
-                t_Pass = -1.0,
-                Nmax = exp.Nmax,
-                Cc = exp.Cc,
-                Nswitch = exp.Nswitch,
-                Aswitch = exp.Aswitch,
-                R_real = R_real,
-                treat_ons = [IC_treat_on],
-                treat_offs = [100.0],
-                save_at = save_at,
-                treat = true
-            )
-            IC_sol_tx1 = run_model_core_hybrid(model_eff, ic_state, ic_sim; treat = true)
-            IC_sol_tx0 = run_model_core_hybrid(model_eff, ic_state, ic_sim; treat = false)
-        end
 
         sim = SimParams(
             n0 = nseed_last,
@@ -605,36 +430,29 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
         end
 
         total_pop = map(u -> sum(resdmg_pop_fun(u)), sol.u)
-        t_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_pass_eff)
-        u_outs = Vector{Float64}(undef, (run_IC * 2) + length(exp.t_keep) + n_pass_eff)
-
-        if run_IC
-            t_outs[1] = last(IC_sol_tx1.t)
-            u_outs[1] = Float64(round(sum(last(resdmg_pop_fun.(IC_sol_tx1.u)))))
-            t_outs[2] = last(IC_sol_tx0.t)
-            u_outs[2] = Float64(round(sum(last(resdmg_pop_fun.(IC_sol_tx0.u)))))
-        end
+        t_outs = Vector{Float64}(undef, length(exp.t_keep) + n_pass_eff)
+        u_outs = Vector{Float64}(undef, length(exp.t_keep) + n_pass_eff)
 
         for j in 1:length(exp.t_keep)
             if !(exp.t_keep[j] in sol.t)
                 t_closest_pos = findmin(abs.(sol.t .- exp.t_keep[j]))[2]
-                t_outs[j + (run_IC * 2)] = sol.t[t_closest_pos]
-                u_outs[j + (run_IC * 2)] = Float64(round(total_pop[t_closest_pos]))
+                t_outs[j] = sol.t[t_closest_pos]
+                u_outs[j] = Float64(round(total_pop[t_closest_pos]))
             else
                 t_realised_pos = findlast(sol.t .== exp.t_keep[j])
-                t_outs[j + (run_IC * 2)] = sol.t[t_realised_pos]
-                u_outs[j + (run_IC * 2)] = Float64(round(total_pop[t_realised_pos]))
+                t_outs[j] = sol.t[t_realised_pos]
+                u_outs[j] = Float64(round(total_pop[t_realised_pos]))
             end
         end
 
         for j in 1:n_pass_eff
             if sum(resdmg_pass_fun.(sol.u) .== j) > 0
                 t_realised_pos = findlast(resdmg_pass_fun.(sol.u) .== j)
-                idx = length(exp.t_keep) + j + (run_IC * 2)
+                idx = length(exp.t_keep) + j
                 t_outs[idx] = sol.t[t_realised_pos]
                 u_outs[idx] = Float64(round(total_pop[t_realised_pos]))
             else
-                idx = length(exp.t_keep) + j + (run_IC * 2)
+                idx = length(exp.t_keep) + j
                 t_outs[idx] = t_outs[idx - 1]
                 u_outs[idx] = u_outs[idx - 1]
             end

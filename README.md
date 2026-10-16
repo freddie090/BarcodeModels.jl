@@ -328,7 +328,7 @@ simple = simulate_simple(model, sim; R_real = "d")
 | `"b"` | `b-(b-d)*del` | `d` | Reduce birth only. |
 | `"d"` | `b` | `d+(b-d)*del` | Increase death only. |
 
-These are undamaged R rates before treatment, density scaling, and phenotype transitions. All three give the same baseline birth-minus-death rate, `(b-d)*(1-del)`, but different turnover and, with birth-coupled switching, different daughter-production rates. ResPop E uses baseline birth/death rates; ResDmg damaged states do not divide and have death rate `d + Dc` before density scaling. The selected option applies throughout expansion, replicate growth, passaging, and optional IC/colony assays.
+These are undamaged R rates before treatment, density scaling, and phenotype transitions. All three give the same baseline birth-minus-death rate, `(b-d)*(1-del)`, but different turnover and, with birth-coupled switching, different daughter-production rates. ResPop E uses baseline birth/death rates; ResDmg damaged states do not divide and have death rate `d + Dc` before density scaling. The selected option applies throughout expansion, replicate growth, and passaging.
 
 ### `ResDmgParams`
 Core parameters for the ResDmg model family (hybrid and ABM). ResDmg uses `S, DS, DR, R` states and does not include an escape (`E`) transition.
