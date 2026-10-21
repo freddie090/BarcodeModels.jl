@@ -54,7 +54,7 @@ export
     ResPop, ResDmg, ResPop_ABM, ResDmg_ABM, ResPop_ABM_EvBC, ResDmg_ABM_EvBC,
     ResPopInVivo, ResPopInVivo_ABM, engraftment_selection,
     build_phylogeny, build_tree, to_newick, lineage_to_newick, population_to_newick, lineage_node_metadata, lineage_edge_barcodes,
-    simulate_experiment, simulate_simple,
+    simulate_experiment, simulate_simple, neutral_mutation_counts,
     plot_simulation_outputs
 
 end

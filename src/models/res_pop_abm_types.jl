@@ -5,7 +5,10 @@ mutable struct CancerCell
     R::Bool
     E::Bool
     alive::Bool
+    muts::Union{Nothing, Vector{Int64}}
 end
+
+CancerCell(barcode, R, E, alive) = CancerCell(barcode, R, E, alive, nothing)
 
 mutable struct PhenoCounts
     Scount::Int64
@@ -70,7 +73,11 @@ mutable struct CancerCellEvBC
     id::Int64
     parent_id::Int64
     birth_time::Float64
+    muts::Union{Nothing, Vector{Int64}}
 end
+
+CancerCellEvBC(barcode, R, E, alive, id, parent_id, birth_time) =
+    CancerCellEvBC(barcode, R, E, alive, id, parent_id, birth_time, nothing)
 
 mutable struct ResPopABMEvBCState
     cells::Vector{CancerCellEvBC}
@@ -93,6 +100,7 @@ function _to_evbc_cells(cells::Vector{CancerCell}; t0::Float64 = 0.0, start_id::
     for i in eachindex(cells)
         c = cells[i]
         evbc_cells[i] = CancerCellEvBC(c.barcode, c.R, c.E, c.alive, 0, 0, c.alive ? t0 : -1.0)
+        evbc_cells[i].muts = c.muts === nothing ? nothing : copy(c.muts)
     end
     next_cell_id, lineage_records = _init_lineage_state!(evbc_cells, t0; start_id = start_id)
     return evbc_cells, next_cell_id, lineage_records

@@ -18,7 +18,8 @@ function _core_grow_kill_abm!(
     cells::Vector{CancerCell},
     params::ResPopParams,
     sim::ABMSimParams;
-    treat::Bool = false
+    treat::Bool = false,
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing
 )
     @assert 0.0 <= sim.t_frac <= 1.0 "t_frac must be between 0 and 1."
     @assert params.drug_effect in RESPOP_DRUG_EFFECTS "drug effect can only take :b, :d, or :c."
@@ -184,6 +185,8 @@ function _core_grow_kill_abm!(
                                     phen_counts)
             end
 
+            _inherit_neutral_mutations!(cells[live_pos], cells[dead_pos], neutral_tracker)
+
             live_vec[dead_pos] = 1
             dead_vec[dead_pos] = 0
             Nt += 1
@@ -237,8 +240,9 @@ function _core_grow_kill_abm!(
     return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, fin_t)
 end
 
-function run_model_core_abm(model::ResPop_ABM, state::ResPopABMState, sim::ABMSimParams; treat::Bool = false)
-    return _core_grow_kill_abm!(state.cells, model.params, sim; treat = treat)
+function run_model_core_abm(model::ResPop_ABM, state::ResPopABMState, sim::ABMSimParams;
+    treat::Bool = false, neutral_tracker = _neutral_tracker(model.abm, state.cells))
+    return _core_grow_kill_abm!(state.cells, model.params, sim; treat = treat, neutral_tracker = neutral_tracker)
 end
 
 function grow_kill_lin_kmc!(cells::Vector{CancerCell},

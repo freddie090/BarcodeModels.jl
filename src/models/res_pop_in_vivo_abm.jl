@@ -3,6 +3,7 @@ struct ResPopInVivo_ABM <: ABMModel
     params::ResPopInVivoParams
     abm::ABMParams
     function ResPopInVivo_ABM(params::ResPopInVivoParams, abm::ABMParams)
+        abm.neutral_mut && throw(ArgumentError("neutral_mut is not supported by InVivo simulations."))
         validate_model_params_strict(params)
         new(params, abm)
     end

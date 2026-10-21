@@ -17,7 +17,8 @@
     treat::Bool,
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
-    K::Int64 = 0
+    K::Int64 = 0,
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing
 )
     progress_tol = 0.1
 
@@ -75,7 +76,7 @@
             drug_effect = drug_effect
         )
         state = ResPopABMState(cells)
-        kmc_out = run_model_core_abm(model, state, sim; treat = treat)
+        kmc_out = run_model_core_abm(model, state, sim; treat = treat, neutral_tracker = neutral_tracker)
         kmc_last_t = last(kmc_out.tvec)
         isfinite(kmc_last_t) || error("ABM produced a non-finite time value.")
 
@@ -87,14 +88,16 @@
                 _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                      Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                                      sub_sample_cells = sub_sample_cells, K = K,
-                                     samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                     samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                     neutral_tracker = neutral_tracker)
                 curr_t = min(max(kmc_last_t, curr_t), tmax)
                 break
             else
                 _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                      Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                                      sub_sample_cells = sub_sample_cells, K = K,
-                                     samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                     samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                     neutral_tracker = neutral_tracker)
                 if live_count < Nseed
                     break
                 else
@@ -112,14 +115,16 @@
             _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                  Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                                  sub_sample_cells = sub_sample_cells, K = K,
-                                 samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                 samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                 neutral_tracker = neutral_tracker)
             curr_t = min(max(kmc_last_t, curr_t), tmax)
             break
         elseif kmc_last_t >= (tmax - progress_tol)
             _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                  Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                                  sub_sample_cells = sub_sample_cells, K = K,
-                                 samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                 samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                 neutral_tracker = neutral_tracker)
             curr_t = min(max(kmc_last_t, curr_t), tmax)
             break
         elseif tP_count < curr_P
@@ -138,7 +143,8 @@
                     _record_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                          Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                                          sub_sample_cells = sub_sample_cells, K = K,
-                                         samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                         samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                         neutral_tracker = neutral_tracker)
                     live_cells = alive_cells(cells)
                     cells = sample(live_cells, Nseed, replace = false)
                     extend_with_dead_cells!(cells, Nbuff, make_dead_cell)
@@ -190,13 +196,15 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
     Nbc::Int64 = model.abm.Nbc,
     bc_probs::Vector{Float64} = model.abm.bc_probs,
     dt_save_at::Float64 = model.abm.dt_save_at,
-    t_frac::Float64 = model.abm.t_frac)
+    t_frac::Float64 = model.abm.t_frac,
+    neutral_tracker = _neutral_tracker(model.abm))
 
     Nbuff = model.abm.Nbuff
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
                        bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
     exp_cells = seed_cells(exp.n0, model.params.rho, Nbuff;
                            barcode_kwargs...)
+    _seed_neutral_mutations!(exp_cells, model.abm)
 
     expansion_model = ResPop_ABM(_copy_respop_params(model.params; al = 0.0, drug_effect = drug_effect);
                                  abm = model.abm)
@@ -218,7 +226,7 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
                 Passage = 1,
                 drug_effect = drug_effect
             )
-            run_model_core_abm(expansion_model, ResPopABMState(exp_cells), stage_sim; treat = false)
+            run_model_core_abm(expansion_model, ResPopABMState(exp_cells), stage_sim; treat = false, neutral_tracker = neutral_tracker)
 
             exp_cells = alive_cells(exp_cells)
             if length(exp_cells) < exp.Nseed[i]
@@ -241,7 +249,7 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
             Passage = 1,
             drug_effect = drug_effect
         )
-        run_model_core_abm(expansion_model, ResPopABMState(exp_cells), final_sim; treat = false)
+        run_model_core_abm(expansion_model, ResPopABMState(exp_cells), final_sim; treat = false, neutral_tracker = neutral_tracker)
         exp_cells = alive_cells(exp_cells)
         final_seed = exp.Nseed[end]
     elseif (exp.t_exp isa Float64) && (exp.Nseed isa Int64)
@@ -258,7 +266,7 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
             Passage = 1,
             drug_effect = drug_effect
         )
-        run_model_core_abm(expansion_model, ResPopABMState(exp_cells), final_sim; treat = false)
+        run_model_core_abm(expansion_model, ResPopABMState(exp_cells), final_sim; treat = false, neutral_tracker = neutral_tracker)
         exp_cells = alive_cells(exp_cells)
         final_seed = exp.Nseed
     else
@@ -298,6 +306,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
 
     validate_resistant_birth_drug_effect(model.params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
+    neutral_tracker = _neutral_tracker(model.abm)
     rep_cells = _expand_split_cells_abm(model_eff, exp, n_rep;
                                         R_real = R_real,
                                         drug_effect = de,
@@ -305,7 +314,8 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
                                         bc_unif = bc_unif,
                                         Nbc = Nbc,
                                         dt_save_at = dt_save_at,
-                                        t_frac = t_frac)
+                                        t_frac = t_frac,
+                                        neutral_tracker = neutral_tracker)
 
     fin_t_outs = Float64[]
     fin_u_outs = Float64[]
@@ -327,7 +337,8 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
             dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
             R_real = R_real, t_frac = t_frac, rep = i,
             treat = drug_treatment, drug_effect = de,
-            sub_sample_cells = sub_sample_cells, K = K
+            sub_sample_cells = sub_sample_cells, K = K,
+            neutral_tracker = neutral_tracker
         )
 
         sim_df = DataFrame(
@@ -394,7 +405,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     if sub_sample_cells
         out["sub_lin_df"] = join_dfs(sub_lin_df_outs, "bc")
     end
-    return out
+    return _add_neutral_outputs!(out, neutral_tracker)
 end
 
 function _run_abm_passage_experiment!(
@@ -416,7 +427,8 @@ function _run_abm_passage_experiment!(
     treat::Bool,
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
-    K::Int64 = 0
+    K::Int64 = 0,
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing
 )
     progress_tol = 0.1
 
@@ -475,7 +487,7 @@ function _run_abm_passage_experiment!(
             drug_effect = drug_effect
         )
         state = ResDmgABMState(cells)
-        kmc_out = run_model_core_abm(model, state, sim; treat = treat)
+        kmc_out = run_model_core_abm(model, state, sim; treat = treat, neutral_tracker = neutral_tracker)
         kmc_last_t = last(kmc_out.tvec)
         isfinite(kmc_last_t) || error("ABM produced a non-finite time value.")
 
@@ -487,14 +499,16 @@ function _run_abm_passage_experiment!(
                 _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                             Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                             sub_sample_cells = sub_sample_cells, K = K,
-                                            samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                            samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                            neutral_tracker = neutral_tracker)
                 curr_t = min(max(kmc_last_t, curr_t), tmax)
                 break
             else
                 _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                             Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                             sub_sample_cells = sub_sample_cells, K = K,
-                                            samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                            samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                            neutral_tracker = neutral_tracker)
                 if live_count < Nseed
                     break
                 else
@@ -512,14 +526,16 @@ function _run_abm_passage_experiment!(
             _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                         Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                         sub_sample_cells = sub_sample_cells, K = K,
-                                        samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                        samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                        neutral_tracker = neutral_tracker)
             curr_t = min(max(kmc_last_t, curr_t), tmax)
             break
         elseif kmc_last_t >= (tmax - progress_tol)
             _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                         Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                         sub_sample_cells = sub_sample_cells, K = K,
-                                        samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                        samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                        neutral_tracker = neutral_tracker)
             curr_t = min(max(kmc_last_t, curr_t), tmax)
             break
         elseif tP_count < curr_P
@@ -538,7 +554,8 @@ function _run_abm_passage_experiment!(
                     _record_resdmg_abm_outputs!(kmc_out, cells, rep, curr_P, cell_lin_df_vec,
                                                 Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                                 sub_sample_cells = sub_sample_cells, K = K,
-                                                samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                                samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                                neutral_tracker = neutral_tracker)
                     live_cells = alive_cells(cells)
                     cells = sample(live_cells, Nseed, replace = false)
                     extend_with_dead_cells!(cells, Nbuff, make_dead_resdmg_cell)
@@ -591,13 +608,15 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
     Nbc::Int64 = model.abm.Nbc,
     bc_probs::Vector{Float64} = model.abm.bc_probs,
     dt_save_at::Float64 = model.abm.dt_save_at,
-    t_frac::Float64 = model.abm.t_frac)
+    t_frac::Float64 = model.abm.t_frac,
+    neutral_tracker = _neutral_tracker(model.abm))
 
     Nbuff = model.abm.Nbuff
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
                        bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
     exp_cells = seed_resdmg_cells(exp.n0, model.params.rho, Nbuff;
                                   barcode_kwargs...)
+    _seed_neutral_mutations!(exp_cells, model.abm)
 
     expansion_model = ResDmg_ABM(_copy_resdmg_params(model.params; drug_effect = drug_effect);
                                  abm = model.abm)
@@ -619,7 +638,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
                 Passage = 1,
                 drug_effect = drug_effect
             )
-            run_model_core_abm(expansion_model, ResDmgABMState(exp_cells), stage_sim; treat = false)
+            run_model_core_abm(expansion_model, ResDmgABMState(exp_cells), stage_sim; treat = false, neutral_tracker = neutral_tracker)
 
             exp_cells = alive_cells(exp_cells)
             if length(exp_cells) < exp.Nseed[i]
@@ -642,7 +661,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
             Passage = 1,
             drug_effect = drug_effect
         )
-        run_model_core_abm(expansion_model, ResDmgABMState(exp_cells), final_sim; treat = false)
+        run_model_core_abm(expansion_model, ResDmgABMState(exp_cells), final_sim; treat = false, neutral_tracker = neutral_tracker)
         exp_cells = alive_cells(exp_cells)
         final_seed = exp.Nseed[end]
     elseif (exp.t_exp isa Float64) && (exp.Nseed isa Int64)
@@ -659,7 +678,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
             Passage = 1,
             drug_effect = drug_effect
         )
-        run_model_core_abm(expansion_model, ResDmgABMState(exp_cells), final_sim; treat = false)
+        run_model_core_abm(expansion_model, ResDmgABMState(exp_cells), final_sim; treat = false, neutral_tracker = neutral_tracker)
         exp_cells = alive_cells(exp_cells)
         final_seed = exp.Nseed
     else
@@ -699,6 +718,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
 
     validate_resistant_birth_drug_effect(model.params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
+    neutral_tracker = _neutral_tracker(model.abm)
     rep_cells = _expand_split_cells_abm(model_eff, exp, n_rep;
                                         R_real = R_real,
                                         drug_effect = de,
@@ -706,7 +726,8 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
                                         bc_unif = bc_unif,
                                         Nbc = Nbc,
                                         dt_save_at = dt_save_at,
-                                        t_frac = t_frac)
+                                        t_frac = t_frac,
+                                        neutral_tracker = neutral_tracker)
 
     fin_t_outs = Float64[]
     fin_u_outs = Float64[]
@@ -728,7 +749,8 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
             dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
             R_real = R_real, t_frac = t_frac, rep = i,
             treat = drug_treatment, drug_effect = de,
-            sub_sample_cells = sub_sample_cells, K = K
+            sub_sample_cells = sub_sample_cells, K = K,
+            neutral_tracker = neutral_tracker
         )
 
         sim_df = DataFrame(
@@ -796,7 +818,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
     if sub_sample_cells
         out["sub_lin_df"] = join_dfs(sub_lin_df_outs, "bc")
     end
-    return out
+    return _add_neutral_outputs!(out, neutral_tracker)
 end
 
 function _run_abm_simple!(
@@ -815,7 +837,8 @@ function _run_abm_simple!(
     treat::Bool,
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
-    K::Int64 = 0
+    K::Int64 = 0,
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing
 )
     sim = ABMSimParams(
         t0 = t0,
@@ -831,7 +854,7 @@ function _run_abm_simple!(
         drug_effect = drug_effect
     )
     state = ResPopABMState(cells)
-    kmc_out = run_model_core_abm(model, state, sim; treat = treat)
+    kmc_out = run_model_core_abm(model, state, sim; treat = treat, neutral_tracker = neutral_tracker)
 
     cell_lin_df_vec = DataFrame[]
     samp_cell_lin_df_vec = DataFrame[]
@@ -845,7 +868,8 @@ function _run_abm_simple!(
     _record_abm_outputs!(kmc_out, cells, rep, 1, cell_lin_df_vec,
                          Nvec, nS_vec, nR_vec, nE_vec, tvec, Pvec,
                          sub_sample_cells = sub_sample_cells, K = K,
-                         samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                         samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                         neutral_tracker = neutral_tracker)
 
     out = Dict(
         "cell_lin_df_vec" => cell_lin_df_vec,
@@ -878,7 +902,8 @@ function _run_abm_simple!(
     treat::Bool,
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
-    K::Int64 = 0
+    K::Int64 = 0,
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing
 )
     sim = ABMSimParams(
         t0 = t0,
@@ -894,7 +919,7 @@ function _run_abm_simple!(
         drug_effect = drug_effect
     )
     state = ResDmgABMState(cells)
-    kmc_out = run_model_core_abm(model, state, sim; treat = treat)
+    kmc_out = run_model_core_abm(model, state, sim; treat = treat, neutral_tracker = neutral_tracker)
 
     cell_lin_df_vec = DataFrame[]
     samp_cell_lin_df_vec = DataFrame[]
@@ -909,7 +934,8 @@ function _run_abm_simple!(
     _record_resdmg_abm_outputs!(kmc_out, cells, rep, 1, cell_lin_df_vec,
                                 Nvec, nS_vec, nDS_vec, nDR_vec, nR_vec, tvec, Pvec,
                                 sub_sample_cells = sub_sample_cells, K = K,
-                                samp_cell_lin_df_vec = samp_cell_lin_df_vec)
+                                samp_cell_lin_df_vec = samp_cell_lin_df_vec,
+                                neutral_tracker = neutral_tracker)
 
     out = Dict(
         "cell_lin_df_vec" => cell_lin_df_vec,
@@ -941,10 +967,12 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
 
     validate_resistant_birth_drug_effect(model.params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
+    neutral_tracker = _neutral_tracker(model.abm)
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
                        bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
     cells = seed_cells(sim.n0, model.params.rho, model.abm.Nbuff;
                        barcode_kwargs...)
+    _seed_neutral_mutations!(cells, model.abm)
 
     sim_out = _run_abm_simple!(
         model_eff, cells;
@@ -954,7 +982,8 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
         dt_save_at = dt_save_at,
         R_real = R_real, t_frac = t_frac, rep = 1,
         treat = drug_treatment, drug_effect = de,
-        sub_sample_cells = false, K = 0
+        sub_sample_cells = false, K = 0,
+        neutral_tracker = neutral_tracker
     )
 
     sol_df = DataFrame(
@@ -965,10 +994,11 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
         nE = sim_out["nE_vec"]
     )
 
-    return Dict(
+    out = Dict(
         "lin_df" => join_dfs(sim_out["cell_lin_df_vec"], "bc"),
         "sol_df" => sol_df
     )
+    return _add_neutral_outputs!(out, neutral_tracker)
 end
 
 function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...)
@@ -985,10 +1015,12 @@ function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...
 
     validate_resistant_birth_drug_effect(model.params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
+    neutral_tracker = _neutral_tracker(model.abm)
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
                        bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
     cells = seed_resdmg_cells(sim.n0, model.params.rho, model.abm.Nbuff;
                               barcode_kwargs...)
+    _seed_neutral_mutations!(cells, model.abm)
 
     sim_out = _run_abm_simple!(
         model_eff, cells;
@@ -998,7 +1030,8 @@ function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...
         dt_save_at = dt_save_at,
         R_real = R_real, t_frac = t_frac, rep = 1,
         treat = drug_treatment, drug_effect = de,
-        sub_sample_cells = false, K = 0
+        sub_sample_cells = false, K = 0,
+        neutral_tracker = neutral_tracker
     )
 
     sol_df = DataFrame(
@@ -1010,10 +1043,11 @@ function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...
         nR = sim_out["nR_vec"]
     )
 
-    return Dict(
+    out = Dict(
         "lin_df" => join_dfs(sim_out["cell_lin_df_vec"], "bc"),
         "sol_df" => sol_df
     )
+    return _add_neutral_outputs!(out, neutral_tracker)
 end
 
 function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams, n_rep::Int64;

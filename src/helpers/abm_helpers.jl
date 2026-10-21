@@ -127,6 +127,57 @@ live_positions(cells) = [cell.alive ? 1 : 0 for cell in cells]
 dead_positions(cells) = [cell.alive ? 0 : 1 for cell in cells]
 alive_cells(cells) = filter(cell -> cell.alive, cells)
 
+"""Simulation-local neutral mutation IDs and bulk observation tables."""
+mutable struct NeutralMutationTracker
+    next_id::Int64
+    poisson::Poisson{Float64}
+    counts::Vector{DataFrame}
+    sample_counts::Vector{DataFrame}
+end
+
+function _neutral_tracker(abm::ABMParams)
+    abm.neutral_mut || return nothing
+    return NeutralMutationTracker(abm.clonal_mut + 1, Poisson(abm.mut_rate), DataFrame[], DataFrame[])
+end
+
+"""Assign shared clonal IDs once, before any expansion or replicate splitting."""
+function _seed_neutral_mutations!(cells, abm::ABMParams)
+    abm.neutral_mut || return nothing
+    for cell in cells
+        cell.muts = cell.alive ? collect(Int64, 1:abm.clonal_mut) : nothing
+    end
+    return nothing
+end
+
+# A standalone core call can initialise fresh cells or resume an existing population.
+# Experiment workflows instead share one tracker across all cores and replicates.
+function _neutral_tracker(abm::ABMParams, cells)
+    tracker = _neutral_tracker(abm)
+    tracker === nothing && return nothing
+    for cell in cells
+        cell.alive || continue
+        if cell.muts === nothing
+            cell.muts = collect(Int64, 1:abm.clonal_mut)
+        elseif !isempty(cell.muts)
+            tracker.next_id = max(tracker.next_id, maximum(cell.muts) + 1)
+        end
+    end
+    return tracker
+end
+
+_inherit_neutral_mutations!(parent, daughter, ::Nothing) = nothing
+
+function _inherit_neutral_mutations!(parent, daughter, tracker::NeutralMutationTracker)
+    inherited = parent.muts
+    inherited === nothing && error("Neutral mutation tracking requires initialised live cells.")
+    daughter.muts = copy(inherited)
+    n_new = rand(tracker.poisson)
+    n_new <= typemax(Int64) - tracker.next_id || error("Neutral mutation IDs exhausted Int64 capacity.")
+    append!(daughter.muts, tracker.next_id:(tracker.next_id + n_new - 1))
+    tracker.next_id += n_new
+    return nothing
+end
+
 function extend_with_dead_cells!(cells, Nbuff::Int64, make_dead_cell::Function)
     initial_length = length(cells)
     if Nbuff > initial_length

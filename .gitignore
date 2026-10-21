@@ -30,3 +30,5 @@ test/invivo_baseline.jl
 test/invivo_import.jl
 test/invivo_validation/
 test/invivo_*.log
+test/neutral_mutations.jl
+test/neutral_validation/

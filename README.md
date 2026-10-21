@@ -230,7 +230,8 @@ params = ResPopParams(
 
 # Choose either model class (from hybrid or ABM model types)
 model_hybrid = ResPop(params)
-model_abm = ResPop_ABM(params)
+abm = ABMParams(Nbuff = 100000, t_frac = 0.005, dt_save_at = 0.1)
+model_abm = ResPop_ABM(params; abm = abm)
 
 # Define the parameters describing the experimental variables
 exp = ExperimentParams(

@@ -33,6 +33,47 @@ function get_counts(cells, rep_name::String)
     return df
 end
 
+"""
+    neutral_mutation_counts(cells, population_name="population")
+
+Count heritable neutral mutation IDs among live cells, returning `mutation_id`,
+`<population_name>_count` and `<population_name>_frequency` columns. Frequency is
+the fraction of live cells carrying the mutation (not allele frequency). Dead
+cells are ignored; empty or mutation-free populations return a typed empty table.
+Count only supplied cells to summarise a sample. Mutations absent from it are omitted.
+"""
+function neutral_mutation_counts(cells, population_name::AbstractString = "population")
+    counts = Dict{Int64, Int64}()
+    population_size = 0
+    for cell in cells
+        cell.alive || continue
+        population_size += 1
+        muts = cell.muts
+        muts === nothing && continue
+        # Simulator mutation vectors contain each inherited infinite-sites ID once.
+        for id in muts
+            counts[id] = get(counts, id, Int64(0)) + 1
+        end
+    end
+    ids = sort!(collect(keys(counts)))
+    abundance = Int64[counts[id] for id in ids]
+    frequency = population_size == 0 ? Float64[] : abundance ./ population_size
+    return DataFrame(:mutation_id => ids,
+        Symbol(population_name, "_count") => abundance,
+        Symbol(population_name, "_frequency") => frequency)
+end
+
+function _add_neutral_outputs!(out, tracker::NeutralMutationTracker)
+    out["mut_df"] = isempty(tracker.counts) ? DataFrame(mutation_id = Int64[]) :
+        sort!(join_dfs(tracker.counts, "mutation_id"), :mutation_id)
+    if !isempty(tracker.sample_counts)
+        out["sub_mut_df"] = sort!(join_dfs(tracker.sample_counts, "mutation_id"), :mutation_id)
+    end
+    return out
+end
+
+_add_neutral_outputs!(out, ::Nothing) = out
+
 """Append ResPop population and passage trajectories to output vectors."""
 function update_track_vec!(kmc_out,
     Nvec::Vector{Int64},
@@ -68,11 +109,16 @@ function _record_abm_outputs!(kmc_out, cells, rep::Int64, curr_P::Int64,
     Nvec::Vector{Int64}, nS_vec::Vector{Int64}, nR_vec::Vector{Int64}, nE_vec::Vector{Int64},
     tvec::Vector{Float64}, Pvec::Vector{Int64};
     sub_sample_cells::Bool = false, K::Int64 = 0,
-    samp_cell_lin_df_vec::Vector{DataFrame} = DataFrame[])
+    samp_cell_lin_df_vec::Vector{DataFrame} = DataFrame[],
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing)
 
     live_cells = alive_cells(cells)
     bc_df = get_counts(live_cells, string("DT", rep, "_P", curr_P))
     push!(cell_lin_df_vec, bc_df)
+
+    if neutral_tracker !== nothing
+        push!(neutral_tracker.counts, neutral_mutation_counts(live_cells, string("DT", rep, "_P", curr_P)))
+    end
 
     if sub_sample_cells
         if K <= length(live_cells)
@@ -80,6 +126,10 @@ function _record_abm_outputs!(kmc_out, cells, rep::Int64, curr_P::Int64,
             push!(samp_cell_lin_df_vec, get_counts(samp_cells, string("DT", rep, "_P", curr_P)))
         else
             push!(samp_cell_lin_df_vec, get_counts(live_cells, string("DT", rep, "_P", curr_P)))
+        end
+        if neutral_tracker !== nothing
+            sampled = K <= length(live_cells) ? samp_cells : live_cells
+            push!(neutral_tracker.sample_counts, neutral_mutation_counts(sampled, string("DT", rep, "_P", curr_P)))
         end
     end
 
@@ -92,11 +142,16 @@ function _record_resdmg_abm_outputs!(kmc_out, cells, rep::Int64, curr_P::Int64,
     Nvec::Vector{Int64}, nS_vec::Vector{Int64}, nDS_vec::Vector{Int64}, nDR_vec::Vector{Int64}, nR_vec::Vector{Int64},
     tvec::Vector{Float64}, Pvec::Vector{Int64};
     sub_sample_cells::Bool = false, K::Int64 = 0,
-    samp_cell_lin_df_vec::Vector{DataFrame} = DataFrame[])
+    samp_cell_lin_df_vec::Vector{DataFrame} = DataFrame[],
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing)
 
     live_cells = alive_cells(cells)
     bc_df = get_counts(live_cells, string("DT", rep, "_P", curr_P))
     push!(cell_lin_df_vec, bc_df)
+
+    if neutral_tracker !== nothing
+        push!(neutral_tracker.counts, neutral_mutation_counts(live_cells, string("DT", rep, "_P", curr_P)))
+    end
 
     if sub_sample_cells
         if K <= length(live_cells)
@@ -104,6 +159,10 @@ function _record_resdmg_abm_outputs!(kmc_out, cells, rep::Int64, curr_P::Int64,
             push!(samp_cell_lin_df_vec, get_counts(samp_cells, string("DT", rep, "_P", curr_P)))
         else
             push!(samp_cell_lin_df_vec, get_counts(live_cells, string("DT", rep, "_P", curr_P)))
+        end
+        if neutral_tracker !== nothing
+            sampled = K <= length(live_cells) ? samp_cells : live_cells
+            push!(neutral_tracker.sample_counts, neutral_mutation_counts(sampled, string("DT", rep, "_P", curr_P)))
         end
     end
 

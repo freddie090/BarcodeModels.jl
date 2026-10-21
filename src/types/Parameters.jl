@@ -253,13 +253,26 @@ struct ABMParams
     K::Int64
     split_after_barcoding::Bool
     full_pheno_bc::Bool
+    neutral_mut::Bool
+    clonal_mut::Int64
+    mut_rate::Float64
 end
 
+"""
+ABM simulation settings. `neutral_mut=true` enables neutral mutation tracking in
+ResPop/ResDmg standard ABM and EvBC. `clonal_mut` (default 0) is shared by all
+starting cells; `mut_rate` (default 0.0) is the Poisson mean mutations per division.
+"""
 function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
                    skew_lib=false, use_lib_probs=false, bc_unif=0.0, Nbc=0,
                    bc_probs=Float64[],
                    sub_sample_cells=false, K=0, split_after_barcoding=false,
-                   full_pheno_bc=false)
+                   full_pheno_bc=false, neutral_mut=false, clonal_mut=0, mut_rate=0.0)
+    neutral_mut isa Bool || throw(ArgumentError("neutral_mut must be Bool."))
+    clonal_mut isa Integer && !(clonal_mut isa Bool) && 0 <= clonal_mut < typemax(Int64) ||
+        throw(ArgumentError("clonal_mut must be a nonnegative integer below typemax(Int64)."))
+    mut_rate isa Real && isfinite(mut_rate) && mut_rate >= 0 && isfinite(Float64(mut_rate)) ||
+        throw(ArgumentError("mut_rate must be finite and nonnegative (mean mutations per division)."))
     bc_probs_vec = Vector{Float64}(bc_probs)
     validate_abm_params(skew_lib = Bool(skew_lib), use_lib_probs = Bool(use_lib_probs),
                         Nbc = Int64(Nbc), bc_probs = bc_probs_vec)
@@ -276,7 +289,10 @@ function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
         Bool(sub_sample_cells),
         Int64(K),
         Bool(split_after_barcoding),
-        Bool(full_pheno_bc)
+        Bool(full_pheno_bc),
+        neutral_mut,
+        Int64(clonal_mut),
+        Float64(mut_rate)
     )
 end
 
@@ -517,6 +533,11 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
 end
 
 # Preserve the pre-InVivo positional constructors, including their conversions.
+ABMParams(Nbuff, t_frac, dt_save_at, skew_lib, use_lib_probs, bc_unif, Nbc,
+    bc_probs, sub_sample_cells, K, split_after_barcoding, full_pheno_bc) =
+    ABMParams(Nbuff, t_frac, dt_save_at, skew_lib, use_lib_probs, bc_unif, Nbc,
+        bc_probs, sub_sample_cells, K, split_after_barcoding, full_pheno_bc, false, 0, 0.0)
+
 ABMParams(Nbuff, t_frac, dt_save_at, skew_lib, use_lib_probs, bc_unif, Nbc,
     bc_probs, sub_sample_cells, K) =
     ABMParams(Nbuff, t_frac, dt_save_at, skew_lib, use_lib_probs, bc_unif, Nbc,
