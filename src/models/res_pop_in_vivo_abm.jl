@@ -5,6 +5,7 @@ struct ResPopInVivo_ABM <: ABMModel
     function ResPopInVivo_ABM(params::ResPopInVivoParams, abm::ABMParams)
         abm.neutral_mut && throw(ArgumentError("neutral_mut is not supported by InVivo simulations."))
         validate_model_params_strict(params)
+        abm.insta_kill && throw(ArgumentError("Instantaneous killing is supported only by ResPop ABM and EvBC."))
         new(params, abm)
     end
 end

@@ -127,6 +127,65 @@ live_positions(cells) = [cell.alive ? 1 : 0 for cell in cells]
 dead_positions(cells) = [cell.alive ? 0 : 1 for cell in cells]
 alive_cells(cells) = filter(cell -> cell.alive, cells)
 
+"""One main-replicate instantaneous treatment and its observed outcome."""
+mutable struct InstantKillState
+    settings::ABMParams
+    applied::Bool
+    mutation_id::Union{Missing, Int64}
+    carrier_fraction::Union{Missing, Float64}
+    N_before::Union{Missing, Int64}
+    N_killed::Union{Missing, Int64}
+    N_after::Union{Missing, Int64}
+end
+
+_instant_kill_state(abm::ABMParams) = abm.insta_kill ?
+    InstantKillState(abm, false, missing, missing, missing, missing, missing) : nothing
+
+_instant_kill_due(::Nothing, start_t, end_t) = false
+function _instant_kill_due(event::InstantKillState, start_t, end_t)
+    event.applied && return false
+    time = event.settings.inst_kill_time
+    time < start_t && error("Instantaneous killing time $(time) was missed before core restart at $(start_t).")
+    return time <= end_t
+end
+
+function _validate_instant_kill_run(abm::ABMParams, drug_treatment::Bool, horizons)
+    abm.insta_kill || return nothing
+    drug_treatment && throw(ArgumentError("insta_kill=true requires drug_treatment=false; both treatment types cannot be enabled."))
+    all(t -> abm.inst_kill_time <= t, horizons) ||
+        throw(ArgumentError("inst_kill_time must lie within every main replicate's simulation horizon."))
+    return nothing
+end
+
+"""Select the closest eligible live-cell carrier fraction, with random ties."""
+function _instant_resistance_mutation(cells, abm::ABMParams)
+    counts = Dict{Int64, Int64}()
+    N = 0
+    for cell in cells
+        cell.alive || continue
+        N += 1
+        cell.muts === nothing && error("Mutation-based killing requires neutral mutations on every live cell.")
+        for id in cell.muts
+            counts[id] = get(counts, id, Int64(0)) + 1
+        end
+    end
+    ids = sort!(collect(keys(counts)))
+    fractions = [counts[id] / N for id in ids]
+    distances = abs.(fractions .- abm.neut_mut_res_prop)
+    # Allow floating-point roundoff at inclusive boundaries and equal-distance ties.
+    roundoff = 4eps(Float64)
+    eligible = findall(d -> d <= abm.neut_mut_res_prop_tol ||
+        isapprox(d, abm.neut_mut_res_prop_tol; atol = roundoff, rtol = 0), distances)
+    if isempty(eligible)
+        available = isempty(fractions) ? "no observed mutations" : "$(minimum(fractions)) to $(maximum(fractions))"
+        throw(ArgumentError("No mutation matches target $(abm.neut_mut_res_prop) +/- $(abm.neut_mut_res_prop_tol); available carrier fractions: $(available)."))
+    end
+    closest = minimum(distances[eligible])
+    ties = filter(i -> isapprox(distances[i], closest; atol = roundoff, rtol = 0), eligible)
+    chosen = length(ties) == 1 ? only(ties) : rand(ties)
+    return ids[chosen], fractions[chosen]
+end
+
 """Simulation-local neutral mutation IDs and bulk observation tables."""
 mutable struct NeutralMutationTracker
     next_id::Int64

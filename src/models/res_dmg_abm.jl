@@ -4,6 +4,7 @@ struct ResDmg_ABM <: ABMModel
     abm::ABMParams
     function ResDmg_ABM(params::ResDmgParams, abm::ABMParams)
         validate_model_params_strict(params)
+        abm.insta_kill && throw(ArgumentError("Instantaneous killing is supported only by ResPop ABM and EvBC."))
         new(params, abm)
     end
 end

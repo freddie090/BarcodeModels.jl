@@ -18,9 +18,10 @@
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
     K::Int64 = 0,
-    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing,
+    instant_kill::Union{Nothing, InstantKillState} = nothing
 )
-    progress_tol = 0.1
+    progress_tol = instant_kill === nothing ? 0.1 : 0.0
 
     curr_t = t0
     curr_P = 1
@@ -76,7 +77,7 @@
             drug_effect = drug_effect
         )
         state = ResPopABMState(cells)
-        kmc_out = run_model_core_abm(model, state, sim; treat = treat, neutral_tracker = neutral_tracker)
+        kmc_out = run_model_core_abm(model, state, sim; treat = treat, neutral_tracker = neutral_tracker, instant_kill = instant_kill)
         kmc_last_t = last(kmc_out.tvec)
         isfinite(kmc_last_t) || error("ABM produced a non-finite time value.")
 
@@ -301,6 +302,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
 
     _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
     _validate_tmax_length(exp.tmax, n_rep)
+    _validate_instant_kill_run(model.abm, drug_treatment, exp.tmax isa AbstractVector ? exp.tmax : (exp.tmax,))
 
     n_pass_eff = exp.tmax isa AbstractVector ? 1 : (length(_passage_times(exp.t_Pass, Float64(exp.tmax))) + 1)
 
@@ -322,10 +324,12 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     lin_df_outs = DataFrame[]
     sub_lin_df_outs = DataFrame[]
     sim_dfs = DataFrame[]
+    kill_rows = model.abm.insta_kill ? NamedTuple[] : nothing
 
     nseed_last = _nseed_last(exp.Nseed)
     for i in 1:n_rep
         rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
+        instant_kill = _instant_kill_state(model.abm)
 
         extend_with_dead_cells!(rep_cells[i], model.abm.Nbuff, make_dead_cell)
 
@@ -338,7 +342,8 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
             R_real = R_real, t_frac = t_frac, rep = i,
             treat = drug_treatment, drug_effect = de,
             sub_sample_cells = sub_sample_cells, K = K,
-            neutral_tracker = neutral_tracker
+            neutral_tracker = neutral_tracker,
+            instant_kill = instant_kill
         )
 
         sim_df = DataFrame(
@@ -350,6 +355,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
             rep = i
         )
         push!(sim_dfs, sim_df)
+        instant_kill === nothing || push!(kill_rows, _instant_kill_row(instant_kill, i))
 
         push!(lin_df_outs, join_dfs(sim["cell_lin_df_vec"], "bc"))
         if sub_sample_cells
@@ -405,6 +411,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     if sub_sample_cells
         out["sub_lin_df"] = join_dfs(sub_lin_df_outs, "bc")
     end
+    kill_rows === nothing || (out["inst_kill_df"] = DataFrame(kill_rows))
     return _add_neutral_outputs!(out, neutral_tracker)
 end
 
@@ -838,7 +845,8 @@ function _run_abm_simple!(
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
     K::Int64 = 0,
-    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing,
+    instant_kill::Union{Nothing, InstantKillState} = nothing
 )
     sim = ABMSimParams(
         t0 = t0,
@@ -854,7 +862,7 @@ function _run_abm_simple!(
         drug_effect = drug_effect
     )
     state = ResPopABMState(cells)
-    kmc_out = run_model_core_abm(model, state, sim; treat = treat, neutral_tracker = neutral_tracker)
+    kmc_out = run_model_core_abm(model, state, sim; treat = treat, neutral_tracker = neutral_tracker, instant_kill = instant_kill)
 
     cell_lin_df_vec = DataFrame[]
     samp_cell_lin_df_vec = DataFrame[]
@@ -966,7 +974,9 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     validate_resistant_birth_drug_effect(model.params, R_real; drug_effect = de)
+    _validate_instant_kill_run(model.abm, drug_treatment, (sim.tmax,))
     model_eff = _with_drug_effect(model, de)
+    instant_kill = _instant_kill_state(model.abm)
     neutral_tracker = _neutral_tracker(model.abm)
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
                        bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
@@ -983,7 +993,8 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
         R_real = R_real, t_frac = t_frac, rep = 1,
         treat = drug_treatment, drug_effect = de,
         sub_sample_cells = false, K = 0,
-        neutral_tracker = neutral_tracker
+        neutral_tracker = neutral_tracker,
+        instant_kill = instant_kill
     )
 
     sol_df = DataFrame(
@@ -998,6 +1009,7 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
         "lin_df" => join_dfs(sim_out["cell_lin_df_vec"], "bc"),
         "sol_df" => sol_df
     )
+    instant_kill === nothing || (out["inst_kill_df"] = DataFrame([_instant_kill_row(instant_kill, 1)]))
     return _add_neutral_outputs!(out, neutral_tracker)
 end
 

@@ -256,18 +256,54 @@ struct ABMParams
     neutral_mut::Bool
     clonal_mut::Int64
     mut_rate::Float64
+    insta_kill::Bool
+    inst_kill_time::Union{Nothing, Float64}
+    inst_kill_mode::String
+    inst_drug_kill_prob::Union{Nothing, Float64}
+    inst_R_strength::Float64
+    neut_mut_res_prop::Union{Nothing, Float64}
+    neut_mut_res_prop_tol::Float64
+end
+
+function validate_instant_kill_params(; insta_kill, inst_kill_time, inst_kill_mode,
+    inst_drug_kill_prob, inst_R_strength, neut_mut_res_prop, neut_mut_res_prop_tol, neutral_mut)
+    insta_kill isa Bool || throw(ArgumentError("insta_kill must be Bool."))
+    insta_kill || return nothing
+    inst_kill_time isa Real && isfinite(inst_kill_time) && inst_kill_time >= 0 ||
+        throw(ArgumentError("inst_kill_time must be finite and nonnegative when insta_kill=true."))
+    inst_kill_mode isa AbstractString && inst_kill_mode in ("phenotype", "random", "neutral_mutation") ||
+        throw(ArgumentError("inst_kill_mode must be \"phenotype\", \"random\", or \"neutral_mutation\"."))
+    for (name, value) in ((:inst_drug_kill_prob, inst_drug_kill_prob),
+        (:inst_R_strength, inst_R_strength), (:neut_mut_res_prop_tol, neut_mut_res_prop_tol))
+        value isa Real && isfinite(value) && 0 <= value <= 1 ||
+            throw(ArgumentError("$(name) must be a finite probability between 0 and 1."))
+    end
+    inst_kill_mode == "random" && inst_R_strength != 0.0 &&
+        throw(ArgumentError("inst_R_strength must be 0.0 in random mode."))
+    if inst_kill_mode == "neutral_mutation"
+        neutral_mut || throw(ArgumentError("neutral_mutation killing requires neutral_mut=true."))
+        neut_mut_res_prop isa Real && isfinite(neut_mut_res_prop) && 0 <= neut_mut_res_prop <= 1 ||
+            throw(ArgumentError("neut_mut_res_prop must be a finite fraction between 0 and 1."))
+    end
+    return nothing
 end
 
 """
 ABM simulation settings. `neutral_mut=true` enables neutral mutation tracking in
 ResPop/ResDmg standard ABM and EvBC. `clonal_mut` (default 0) is shared by all
 starting cells; `mut_rate` (default 0.0) is the Poisson mean mutations per division.
+`insta_kill=true` enables one instantaneous killing event in ResPop ABM/EvBC only.
+Supply `inst_kill_time`, `inst_drug_kill_prob`, and disable `drug_treatment` in the
+simulation. Modes are "phenotype", "random", and "neutral_mutation".
 """
 function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
                    skew_lib=false, use_lib_probs=false, bc_unif=0.0, Nbc=0,
                    bc_probs=Float64[],
                    sub_sample_cells=false, K=0, split_after_barcoding=false,
-                   full_pheno_bc=false, neutral_mut=false, clonal_mut=0, mut_rate=0.0)
+                   full_pheno_bc=false, neutral_mut=false, clonal_mut=0, mut_rate=0.0,
+                   insta_kill=false, inst_kill_time=nothing, inst_kill_mode="phenotype",
+                   inst_drug_kill_prob=nothing, inst_R_strength=0.0,
+                   neut_mut_res_prop=nothing, neut_mut_res_prop_tol=0.01)
     neutral_mut isa Bool || throw(ArgumentError("neutral_mut must be Bool."))
     clonal_mut isa Integer && !(clonal_mut isa Bool) && 0 <= clonal_mut < typemax(Int64) ||
         throw(ArgumentError("clonal_mut must be a nonnegative integer below typemax(Int64)."))
@@ -276,6 +312,10 @@ function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
     bc_probs_vec = Vector{Float64}(bc_probs)
     validate_abm_params(skew_lib = Bool(skew_lib), use_lib_probs = Bool(use_lib_probs),
                         Nbc = Int64(Nbc), bc_probs = bc_probs_vec)
+    validate_instant_kill_params(; insta_kill, inst_kill_time, inst_kill_mode,
+        inst_drug_kill_prob, inst_R_strength, neut_mut_res_prop, neut_mut_res_prop_tol, neutral_mut)
+    inst_time = inst_kill_time === nothing ? nothing : Float64(inst_kill_time)
+    inst_time === nothing || isfinite(inst_time) || throw(ArgumentError("inst_kill_time must fit Float64."))
 
     return ABMParams(
         Int64(Nbuff),
@@ -292,7 +332,14 @@ function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
         Bool(full_pheno_bc),
         neutral_mut,
         Int64(clonal_mut),
-        Float64(mut_rate)
+        Float64(mut_rate),
+        insta_kill,
+        inst_time,
+        String(inst_kill_mode),
+        inst_drug_kill_prob === nothing ? nothing : Float64(inst_drug_kill_prob),
+        Float64(inst_R_strength),
+        neut_mut_res_prop === nothing ? nothing : Float64(neut_mut_res_prop),
+        Float64(neut_mut_res_prop_tol)
     )
 end
 
@@ -533,6 +580,13 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
 end
 
 # Preserve the pre-InVivo positional constructors, including their conversions.
+ABMParams(Nbuff, t_frac, dt_save_at, skew_lib, use_lib_probs, bc_unif, Nbc,
+    bc_probs, sub_sample_cells, K, split_after_barcoding, full_pheno_bc,
+    neutral_mut, clonal_mut, mut_rate) =
+    ABMParams(Nbuff, t_frac, dt_save_at, skew_lib, use_lib_probs, bc_unif, Nbc,
+        bc_probs, sub_sample_cells, K, split_after_barcoding, full_pheno_bc,
+        neutral_mut, clonal_mut, mut_rate, false, nothing, "phenotype", nothing, 0.0, nothing, 0.01)
+
 ABMParams(Nbuff, t_frac, dt_save_at, skew_lib, use_lib_probs, bc_unif, Nbc,
     bc_probs, sub_sample_cells, K, split_after_barcoding, full_pheno_bc) =
     ABMParams(Nbuff, t_frac, dt_save_at, skew_lib, use_lib_probs, bc_unif, Nbc,

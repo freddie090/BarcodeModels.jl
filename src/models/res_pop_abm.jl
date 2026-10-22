@@ -19,11 +19,13 @@ function _core_grow_kill_abm!(
     params::ResPopParams,
     sim::ABMSimParams;
     treat::Bool = false,
-    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing,
+    instant_kill::Union{Nothing, InstantKillState} = nothing
 )
     @assert 0.0 <= sim.t_frac <= 1.0 "t_frac must be between 0 and 1."
     @assert params.drug_effect in RESPOP_DRUG_EFFECTS "drug effect can only take :b, :d, or :c."
     @assert sim.R_real in ["b", "d", "l"] "R_real can only take 'b', 'd' or 'l' as a value."
+    instant_kill !== nothing && treat && throw(ArgumentError("Instantaneous and concentration treatment cannot both be enabled."))
 
     independent = params.transition_coupling === :independent_rate
     de = sim.drug_effect
@@ -67,12 +69,24 @@ function _core_grow_kill_abm!(
     Evec = Int64[phen_counts.Ecount]
     Pvec = Int64[sim.Passage]
 
+    if Nt > 0 && _instant_kill_due(instant_kill, t, t)
+        Nt = _record_instant_kill!(cells, phen_counts, live_vec, dead_vec, instant_kill,
+            sim, Nvec, tvec, Svec, Rvec, Evec, Pvec)
+        Nt == 0 && return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
+    end
+
     # A population already at the cap needs no event proposal or clock advance.
     if Nt >= sim.Nmax
         return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
     end
 
     if bdmax == 0.0
+        if Nt > 0 && _instant_kill_due(instant_kill, t, sim.tmax)
+            t = instant_kill.settings.inst_kill_time
+            Nt = _record_instant_kill!(cells, phen_counts, live_vec, dead_vec, instant_kill,
+                sim, Nvec, tvec, Svec, Rvec, Evec, Pvec)
+            Nt == 0 && return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
+        end
         t = sim.tmax
         push!(tvec, t)
         push!(Nvec, Nt)
@@ -95,6 +109,16 @@ function _core_grow_kill_abm!(
         denom = bdmax * Nt
         denom > 0.0 || error("ABM core loop encountered non-positive time-step denominator (bdmax*Nt=$(denom)).")
         dt = -log(rand()) / denom
+        if _instant_kill_due(instant_kill, t, min(t + dt, sim.tmax))
+            t = instant_kill.settings.inst_kill_time
+            Nt = _record_instant_kill!(cells, phen_counts, live_vec, dead_vec, instant_kill,
+                sim, Nvec, tvec, Svec, Rvec, Evec, Pvec)
+            if Nt == 0 || t == sim.tmax
+                return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
+            end
+            # Discard the interrupted proposal; resume the stochastic clock after killing.
+            continue
+        end
         t += dt
 
         if t >= t_rec
@@ -236,13 +260,15 @@ function _core_grow_kill_abm!(
         end
     end
 
-    fin_t = round(t, digits = 4)
+    fin_t = instant_kill === nothing ? round(t, digits = 4) : t
     return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, fin_t)
 end
 
 function run_model_core_abm(model::ResPop_ABM, state::ResPopABMState, sim::ABMSimParams;
-    treat::Bool = false, neutral_tracker = _neutral_tracker(model.abm, state.cells))
-    return _core_grow_kill_abm!(state.cells, model.params, sim; treat = treat, neutral_tracker = neutral_tracker)
+    treat::Bool = false, neutral_tracker = _neutral_tracker(model.abm, state.cells),
+    instant_kill::Union{Nothing, InstantKillState} = nothing)
+    model.abm.insta_kill && treat && throw(ArgumentError("insta_kill=true requires drug_treatment=false."))
+    return _core_grow_kill_abm!(state.cells, model.params, sim; treat = treat, neutral_tracker = neutral_tracker, instant_kill = instant_kill)
 end
 
 function grow_kill_lin_kmc!(cells::Vector{CancerCell},

@@ -74,6 +74,14 @@ end
 
 _add_neutral_outputs!(out, ::Nothing) = out
 
+function _instant_kill_row(event::InstantKillState, rep::Int64)
+    return (rep = rep, time = event.settings.inst_kill_time,
+        mode = event.settings.inst_kill_mode,
+        status = event.applied ? "applied" : "not_reached",
+        mutation_id = event.mutation_id, carrier_fraction = event.carrier_fraction,
+        N_before = event.N_before, N_killed = event.N_killed, N_after = event.N_after)
+end
+
 """Append ResPop population and passage trajectories to output vectors."""
 function update_track_vec!(kmc_out,
     Nvec::Vector{Int64},

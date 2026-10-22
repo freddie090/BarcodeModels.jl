@@ -20,9 +20,10 @@ function _run_abm_passage_experiment!(
     lineage_records::Vector{LineageRecord},
     sub_sample_cells::Bool = false,
     K::Int64 = 0,
-    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing,
+    instant_kill::Union{Nothing, InstantKillState} = nothing
 )
-    progress_tol = 0.1
+    progress_tol = instant_kill === nothing ? 0.1 : 0.0
 
     curr_t = t0
     curr_P = 1
@@ -78,7 +79,7 @@ function _run_abm_passage_experiment!(
             drug_effect = drug_effect
         )
         state = ResPopABMEvBCState(cells, next_cell_id, lineage_records)
-        kmc_out = run_model_core_abm(model, state, sim; treat = treat, neutral_tracker = neutral_tracker)
+        kmc_out = run_model_core_abm(model, state, sim; treat = treat, neutral_tracker = neutral_tracker, instant_kill = instant_kill)
         next_cell_id = state.next_cell_id
         lineage_records = state.lineage_records
 
@@ -412,6 +413,7 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
 
     _validate_tmax_vector_constraints(exp.tmax, exp.t_Pass)
     _validate_tmax_length(exp.tmax, n_rep)
+    _validate_instant_kill_run(model.abm, drug_treatment, exp.tmax isa AbstractVector ? exp.tmax : (exp.tmax,))
 
     n_pass_eff = exp.tmax isa AbstractVector ? 1 : (length(_passage_times(exp.t_Pass, Float64(exp.tmax))) + 1)
 
@@ -437,11 +439,13 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
     sub_lin_df_outs = DataFrame[]
     lineage_df_outs = DataFrame[]
     sim_dfs = DataFrame[]
+    kill_rows = model.abm.insta_kill ? NamedTuple[] : nothing
 
     nseed_last = _nseed_last(exp.Nseed)
     next_cell_id = Int64(1)
     for i in 1:n_rep
         rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
+        instant_kill = _instant_kill_state(model.abm)
         rep_cells_evbc, next_cell_id, lineage_records = _to_evbc_cells(rep_cells_base[i];
             t0 = 0.0, start_id = next_cell_id)
         extend_with_dead_cells!(rep_cells_evbc, model.abm.Nbuff, make_dead_cell_evbc)
@@ -457,7 +461,8 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
             next_cell_id = next_cell_id,
             lineage_records = lineage_records,
             sub_sample_cells = sub_sample_cells, K = K,
-            neutral_tracker = neutral_tracker
+            neutral_tracker = neutral_tracker,
+            instant_kill = instant_kill
         )
         next_cell_id = sim["next_cell_id"]
 
@@ -470,6 +475,7 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
             rep = i
         )
         push!(sim_dfs, sim_df)
+        instant_kill === nothing || push!(kill_rows, _instant_kill_row(instant_kill, i))
         push!(lin_df_outs, join_dfs(sim["cell_lin_df_vec"], "bc"))
         push!(lineage_df_outs, _lineage_df(sim["lineage_records"], i, sim["alive_ids"]))
         if sub_sample_cells
@@ -527,6 +533,7 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
     if sub_sample_cells
         out["sub_lin_df"] = join_dfs(sub_lin_df_outs, "bc")
     end
+    kill_rows === nothing || (out["inst_kill_df"] = DataFrame(kill_rows))
     return _add_neutral_outputs!(out, neutral_tracker)
 end
 
@@ -686,7 +693,8 @@ function _run_abm_simple!(
     lineage_records::Vector{LineageRecord},
     sub_sample_cells::Bool = false,
     K::Int64 = 0,
-    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing,
+    instant_kill::Union{Nothing, InstantKillState} = nothing
 )
     sim = ABMSimParams(
         t0 = t0,
@@ -702,7 +710,7 @@ function _run_abm_simple!(
         drug_effect = drug_effect
     )
     state = ResPopABMEvBCState(cells, next_cell_id, lineage_records)
-    kmc_out = run_model_core_abm(model, state, sim; treat = treat, neutral_tracker = neutral_tracker)
+    kmc_out = run_model_core_abm(model, state, sim; treat = treat, neutral_tracker = neutral_tracker, instant_kill = instant_kill)
 
     next_cell_id = state.next_cell_id
     lineage_records = state.lineage_records
@@ -828,7 +836,9 @@ function _simulate_simple_abm(model::ResPop_ABM_EvBC, sim::SimpleSimParams; kwar
     dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at)
 
     validate_resistant_birth_drug_effect(model.params, R_real; drug_effect = de)
+    _validate_instant_kill_run(model.abm, drug_treatment, (sim.tmax,))
     model_eff = _with_drug_effect(model, de)
+    instant_kill = _instant_kill_state(model.abm)
     neutral_tracker = _neutral_tracker(model.abm)
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
                        bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
@@ -848,7 +858,8 @@ function _simulate_simple_abm(model::ResPop_ABM_EvBC, sim::SimpleSimParams; kwar
         next_cell_id = next_cell_id,
         lineage_records = lineage_records,
         sub_sample_cells = false, K = 0,
-        neutral_tracker = neutral_tracker
+        neutral_tracker = neutral_tracker,
+        instant_kill = instant_kill
     )
 
     sol_df = DataFrame(
@@ -864,6 +875,7 @@ function _simulate_simple_abm(model::ResPop_ABM_EvBC, sim::SimpleSimParams; kwar
         "sol_df" => sol_df,
         "lineage_df" => _lineage_df(sim_out["lineage_records"], 1, sim_out["alive_ids"])
     )
+    instant_kill === nothing || (out["inst_kill_df"] = DataFrame([_instant_kill_row(instant_kill, 1)]))
     return _add_neutral_outputs!(out, neutral_tracker)
 end
 

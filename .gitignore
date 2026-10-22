@@ -32,3 +32,6 @@ test/invivo_validation/
 test/invivo_*.log
 test/neutral_mutations.jl
 test/neutral_validation/
+test/instant_killing.jl
+test/instant_validation/
+/supp.README.md
