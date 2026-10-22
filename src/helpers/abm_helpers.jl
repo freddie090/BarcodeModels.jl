@@ -136,7 +136,16 @@ mutable struct InstantKillState
     N_before::Union{Missing, Int64}
     N_killed::Union{Missing, Int64}
     N_after::Union{Missing, Int64}
+    alive_at_Tx::Union{Nothing, Set{Int64}}
+    alive_post_Tx::Union{Nothing, Set{Int64}}
 end
+
+InstantKillState(settings, applied, mutation_id, carrier_fraction, N_before, N_killed, N_after) =
+    InstantKillState(settings, applied, mutation_id, carrier_fraction, N_before, N_killed, N_after,
+        nothing, nothing)
+
+# Standard ABM cells carry no lineage IDs and allocate no snapshot sets.
+_instant_kill_lineage_ids(cells) = nothing
 
 _instant_kill_state(abm::ABMParams) = abm.insta_kill ?
     InstantKillState(abm, false, missing, missing, missing, missing, missing) : nothing

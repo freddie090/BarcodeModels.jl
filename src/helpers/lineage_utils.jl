@@ -20,10 +20,27 @@ function _init_lineage_state!(cells, phenotype_label::F, t0::Float64;
     return next_cell_id, lineage_records
 end
 
-"""Build the lineage output table from records and extant cell ids."""
-function _lineage_df(records::Vector{LineageRecord}, rep::Int64, alive_ids::Vector{Int64} = Int64[])
+_add_instant_lineage_flags!(df::DataFrame, ::Nothing) = df
+
+"""Annotate immutable treatment-time membership, independently of final survival."""
+function _add_instant_lineage_flags!(df::DataFrame, event::InstantKillState)
+    if event.applied
+        event.alive_at_Tx !== nothing && event.alive_post_Tx !== nothing ||
+            error("EvBC treatment lineage IDs were not captured.")
+        df[!, :alive_at_Tx] = [id in event.alive_at_Tx for id in df.id]
+        df[!, :alive_post_Tx] = [id in event.alive_post_Tx for id in df.id]
+    else
+        df[!, :alive_at_Tx] = fill!(Vector{Union{Missing, Bool}}(undef, nrow(df)), missing)
+        df[!, :alive_post_Tx] = fill!(Vector{Union{Missing, Bool}}(undef, nrow(df)), missing)
+    end
+    return df
+end
+
+"""Build lineage output, optionally marking live cells immediately before/after treatment."""
+function _lineage_df(records::Vector{LineageRecord}, rep::Int64, alive_ids::Vector{Int64} = Int64[];
+    instant_kill::Union{Nothing, InstantKillState} = nothing)
     if isempty(records)
-        return DataFrame(
+        df = DataFrame(
             id = Int64[],
             parent_id = Int64[],
             birth_time = Float64[],
@@ -33,6 +50,7 @@ function _lineage_df(records::Vector{LineageRecord}, rep::Int64, alive_ids::Vect
             alive_at_end = Bool[],
             rep = Int64[]
         )
+        return _add_instant_lineage_flags!(df, instant_kill)
     end
     ids = [r.id for r in records]
     parent_ids = [r.parent_id for r in records]
@@ -42,7 +60,7 @@ function _lineage_df(records::Vector{LineageRecord}, rep::Int64, alive_ids::Vect
     barcodes = [r.barcode for r in records]
     alive_id_set = Set(alive_ids)
     alive_at_end = [id in alive_id_set for id in ids]
-    return DataFrame(
+    df = DataFrame(
         id = ids,
         parent_id = parent_ids,
         birth_time = birth_times,
@@ -52,6 +70,7 @@ function _lineage_df(records::Vector{LineageRecord}, rep::Int64, alive_ids::Vect
         alive_at_end = alive_at_end,
         rep = fill(rep, length(records))
     )
+    return _add_instant_lineage_flags!(df, instant_kill)
 end
 
 function _lineage_required_columns_present(lineage_df::DataFrame; unique_ids::Bool = false)

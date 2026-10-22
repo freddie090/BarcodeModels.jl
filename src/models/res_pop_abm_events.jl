@@ -98,6 +98,7 @@ function _instant_kill_event!(cells, phen_counts::PhenoCounts, live_vec, dead_ve
         event.mutation_id, event.carrier_fraction = _instant_resistance_mutation(cells, abm)
     end
     event.N_before = n_alive(cells)
+    event.alive_at_Tx = _instant_kill_lineage_ids(cells)
     killed = 0
     for i in eachindex(cells)
         cell = cells[i]
@@ -114,6 +115,7 @@ function _instant_kill_event!(cells, phen_counts::PhenoCounts, live_vec, dead_ve
     end
     event.N_killed = killed
     event.N_after = event.N_before - killed
+    event.alive_post_Tx = _instant_kill_lineage_ids(cells)
     event.applied = true
     return event.N_after
 end

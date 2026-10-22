@@ -87,6 +87,9 @@ end
 
 make_dead_cell_evbc() = CancerCellEvBC(0.0, false, false, false, 0, 0, -1.0)
 
+_instant_kill_lineage_ids(cells::AbstractVector{CancerCellEvBC}) =
+    Set{Int64}(cell.id for cell in cells if cell.alive)
+
 _respop_pheno_label(cell::CancerCellEvBC) = cell.E ? "E" : (cell.R ? "R" : "S")
 
 """Initialise root lineage records using the model phenotype labels."""
