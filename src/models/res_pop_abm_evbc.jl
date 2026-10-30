@@ -70,9 +70,9 @@ function _core_grow_kill_abm!(
     Evec = Int64[phen_counts.Ecount]
     Pvec = Int64[sim.Passage]
 
-    if Nt > 0 && _instant_kill_due(instant_kill, t, t)
+    if Nt > 0 && (_instant_kill_due(instant_kill, t, t) || _instant_population_due(instant_kill, Nt))
         Nt = _record_instant_kill!(cells, phen_counts, live_vec, dead_vec, instant_kill,
-            sim, Nvec, tvec, Svec, Rvec, Evec, Pvec)
+            sim, Nvec, tvec, Svec, Rvec, Evec, Pvec; time = t)
         Nt == 0 && return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
     end
 
@@ -215,6 +215,11 @@ function _core_grow_kill_abm!(
             live_vec[dead_pos] = 1
             dead_vec[dead_pos] = 0
             Nt += 1
+            if _instant_population_due(instant_kill, Nt)
+                Nt = _record_instant_kill!(cells, phen_counts, live_vec, dead_vec, instant_kill,
+                    sim, Nvec, tvec, Svec, Rvec, Evec, Pvec; time = t)
+                Nt == 0 && return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
+            end
             if Nt >= sim.Nmax
                 push!(Nvec, Nt)
                 push!(tvec, t)
@@ -268,6 +273,5 @@ end
 function run_model_core_abm(model::ResPop_ABM_EvBC, state::ResPopABMEvBCState, sim::ABMSimParams;
     treat::Bool = false, neutral_tracker = _neutral_tracker(model.abm, state.cells),
     instant_kill::Union{Nothing, InstantKillState} = nothing)
-    model.abm.insta_kill && treat && throw(ArgumentError("insta_kill=true requires drug_treatment=false."))
     return _core_grow_kill_abm!(state, model.params, sim; treat = treat, neutral_tracker = neutral_tracker, instant_kill = instant_kill)
 end

@@ -92,6 +92,9 @@ _instant_kill_lineage_ids(cells::AbstractVector{CancerCellEvBC}) =
 
 _respop_pheno_label(cell::CancerCellEvBC) = cell.E ? "E" : (cell.R ? "R" : "S")
 
+_lineage_phenotypes(cells::AbstractVector{CancerCellEvBC}) =
+    Dict{Int64, String}(cell.id => _respop_pheno_label(cell) for cell in cells if cell.alive && cell.id > 0)
+
 """Initialise root lineage records using the model phenotype labels."""
 function _init_lineage_state!(cells::Vector{CancerCellEvBC}, t0::Float64 = 0.0;
     start_id::Int64 = 1)

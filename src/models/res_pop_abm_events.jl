@@ -97,15 +97,19 @@ function _instant_kill_event!(cells, phen_counts::PhenoCounts, live_vec, dead_ve
     if abm.inst_kill_mode == "neutral_mutation"
         event.mutation_id, event.carrier_fraction = _instant_resistance_mutation(cells, abm)
     end
+    if abm.save_pre_treatment_mutations
+        event.pre_treatment_mutations = neutral_mutation_counts(cells)
+    end
     event.N_before = n_alive(cells)
     event.alive_at_Tx = _instant_kill_lineage_ids(cells)
+    event.pheno_at_Tx = _lineage_phenotypes(cells)
     killed = 0
     for i in eachindex(cells)
         cell = cells[i]
         cell.alive || continue
         resistant = abm.inst_kill_mode == "phenotype" ? cell.R || cell.E :
             abm.inst_kill_mode == "neutral_mutation" ? event.mutation_id in cell.muts : false
-        p = abm.inst_drug_kill_prob * (resistant ? abm.inst_R_strength : 1.0)
+        p = abm.inst_drug_kill_prob * (resistant ? 1.0 - abm.inst_R_strength : 1.0)
         if p == 1.0 || (p > 0.0 && rand() < p)
             death_event!(cells, i, phen_counts)
             live_vec[i] = 0
@@ -122,8 +126,7 @@ end
 
 """Record both sides of the instantaneous discontinuity at its exact time."""
 function _record_instant_kill!(cells, phen_counts, live_vec, dead_vec, event,
-    sim, Nvec, tvec, Svec, Rvec, Evec, Pvec)
-    time = event.settings.inst_kill_time
+    sim, Nvec, tvec, Svec, Rvec, Evec, Pvec; time::Float64 = event.settings.inst_kill_time)
     push!(Nvec, n_alive(cells))
     push!(tvec, time)
     push!(Svec, phen_counts.Scount)
@@ -131,6 +134,7 @@ function _record_instant_kill!(cells, phen_counts, live_vec, dead_vec, event,
     push!(Evec, phen_counts.Ecount)
     push!(Pvec, sim.Passage)
     Nt = _instant_kill_event!(cells, phen_counts, live_vec, dead_vec, event)
+    event.time = time
     push!(Nvec, Nt)
     push!(tvec, time)
     push!(Svec, phen_counts.Scount)

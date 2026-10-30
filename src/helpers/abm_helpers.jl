@@ -138,7 +138,25 @@ mutable struct InstantKillState
     N_after::Union{Missing, Int64}
     alive_at_Tx::Union{Nothing, Set{Int64}}
     alive_post_Tx::Union{Nothing, Set{Int64}}
+    time::Union{Missing, Float64}
+    pre_treatment_mutations::Union{Nothing, DataFrame}
+    pheno_at_Tx::Union{Nothing, Dict{Int64, String}}
 end
+
+InstantKillState(settings, applied, mutation_id, carrier_fraction, N_before, N_killed, N_after,
+    alive_at_Tx, alive_post_Tx, time, pre_treatment_mutations) =
+    InstantKillState(settings, applied, mutation_id, carrier_fraction, N_before, N_killed, N_after,
+        alive_at_Tx, alive_post_Tx, time, pre_treatment_mutations, nothing)
+
+InstantKillState(settings, applied, mutation_id, carrier_fraction, N_before, N_killed, N_after,
+    alive_at_Tx, alive_post_Tx, time) =
+    InstantKillState(settings, applied, mutation_id, carrier_fraction, N_before, N_killed, N_after,
+        alive_at_Tx, alive_post_Tx, time, nothing)
+
+InstantKillState(settings, applied, mutation_id, carrier_fraction, N_before, N_killed, N_after,
+    alive_at_Tx, alive_post_Tx) =
+    InstantKillState(settings, applied, mutation_id, carrier_fraction, N_before, N_killed, N_after,
+        alive_at_Tx, alive_post_Tx, missing)
 
 InstantKillState(settings, applied, mutation_id, carrier_fraction, N_before, N_killed, N_after) =
     InstantKillState(settings, applied, mutation_id, carrier_fraction, N_before, N_killed, N_after,
@@ -146,21 +164,28 @@ InstantKillState(settings, applied, mutation_id, carrier_fraction, N_before, N_k
 
 # Standard ABM cells carry no lineage IDs and allocate no snapshot sets.
 _instant_kill_lineage_ids(cells) = nothing
+_lineage_phenotypes(cells) = nothing
 
-_instant_kill_state(abm::ABMParams) = abm.insta_kill ?
+_instant_kill_state(abm::ABMParams, drug_treatment::Bool = true) = drug_treatment && abm.insta_kill ?
     InstantKillState(abm, false, missing, missing, missing, missing, missing) : nothing
 
 _instant_kill_due(::Nothing, start_t, end_t) = false
 function _instant_kill_due(event::InstantKillState, start_t, end_t)
     event.applied && return false
+    _instant_population_trigger(event.settings) && return false
     time = event.settings.inst_kill_time
     time < start_t && error("Instantaneous killing time $(time) was missed before core restart at $(start_t).")
     return time <= end_t
 end
 
+_instant_population_trigger(abm::ABMParams) = abm.inst_kill_N !== nothing && abm.inst_kill_N > 0
+_instant_population_due(::Nothing, N) = false
+_instant_population_due(event::InstantKillState, N) =
+    !event.applied && _instant_population_trigger(event.settings) && N >= event.settings.inst_kill_N
+
 function _validate_instant_kill_run(abm::ABMParams, drug_treatment::Bool, horizons)
-    abm.insta_kill || return nothing
-    drug_treatment && throw(ArgumentError("insta_kill=true requires drug_treatment=false; both treatment types cannot be enabled."))
+    drug_treatment && abm.insta_kill || return nothing
+    _instant_population_trigger(abm) && return nothing
     all(t -> abm.inst_kill_time <= t, horizons) ||
         throw(ArgumentError("inst_kill_time must lie within every main replicate's simulation horizon."))
     return nothing

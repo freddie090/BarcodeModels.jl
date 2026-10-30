@@ -102,6 +102,9 @@ function _resdmg_pheno_label(cell::ResDmgCellEvBC)
     return "S"
 end
 
+_lineage_phenotypes(cells::AbstractVector{ResDmgCellEvBC}) =
+    Dict{Int64, String}(cell.id => _resdmg_pheno_label(cell) for cell in cells if cell.alive && cell.id > 0)
+
 """Initialise root lineage records using the model phenotype labels."""
 function _init_lineage_state!(cells::Vector{ResDmgCellEvBC}, t0::Float64 = 0.0;
     start_id::Int64 = 1)

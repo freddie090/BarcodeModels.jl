@@ -36,3 +36,4 @@ test/instant_killing.jl
 test/instant_validation/
 /supp.README.md
 test/instant_tx_lineage.jl
+test/lineage_phenotype_snapshots.jl

@@ -22,23 +22,32 @@ end
 
 _add_instant_lineage_flags!(df::DataFrame, ::Nothing) = df
 
-"""Annotate immutable treatment-time membership, independently of final survival."""
+"""Annotate immutable pre-treatment phenotypes and membership, independently of final survival."""
 function _add_instant_lineage_flags!(df::DataFrame, event::InstantKillState)
     if event.applied
-        event.alive_at_Tx !== nothing && event.alive_post_Tx !== nothing ||
-            error("EvBC treatment lineage IDs were not captured.")
+        event.alive_at_Tx !== nothing && event.alive_post_Tx !== nothing && event.pheno_at_Tx !== nothing ||
+            error("EvBC treatment lineage IDs and phenotypes were not captured.")
         df[!, :alive_at_Tx] = [id in event.alive_at_Tx for id in df.id]
         df[!, :alive_post_Tx] = [id in event.alive_post_Tx for id in df.id]
     else
         df[!, :alive_at_Tx] = fill!(Vector{Union{Missing, Bool}}(undef, nrow(df)), missing)
         df[!, :alive_post_Tx] = fill!(Vector{Union{Missing, Bool}}(undef, nrow(df)), missing)
     end
+    df[!, :pheno_at_Tx] = Union{Missing, String}[
+        event.pheno_at_Tx === nothing ? missing : get(event.pheno_at_Tx, id, missing) for id in df.id]
     return df
 end
 
-"""Build lineage output, optionally marking live cells immediately before/after treatment."""
+_add_lineage_end_phenotypes!(df::DataFrame, ::Nothing) = df
+function _add_lineage_end_phenotypes!(df::DataFrame, phenotypes::Dict{Int64, String})
+    df[!, :pheno_at_end] = Union{Missing, String}[get(phenotypes, id, missing) for id in df.id]
+    return df
+end
+
+"""Build lineage output with optional actual endpoint and pre-treatment phenotype snapshots."""
 function _lineage_df(records::Vector{LineageRecord}, rep::Int64, alive_ids::Vector{Int64} = Int64[];
-    instant_kill::Union{Nothing, InstantKillState} = nothing)
+    instant_kill::Union{Nothing, InstantKillState} = nothing,
+    pheno_at_end::Union{Nothing, Dict{Int64, String}} = nothing)
     if isempty(records)
         df = DataFrame(
             id = Int64[],
@@ -50,7 +59,7 @@ function _lineage_df(records::Vector{LineageRecord}, rep::Int64, alive_ids::Vect
             alive_at_end = Bool[],
             rep = Int64[]
         )
-        return _add_instant_lineage_flags!(df, instant_kill)
+        return _add_instant_lineage_flags!(_add_lineage_end_phenotypes!(df, pheno_at_end), instant_kill)
     end
     ids = [r.id for r in records]
     parent_ids = [r.parent_id for r in records]
@@ -70,7 +79,7 @@ function _lineage_df(records::Vector{LineageRecord}, rep::Int64, alive_ids::Vect
         alive_at_end = alive_at_end,
         rep = fill(rep, length(records))
     )
-    return _add_instant_lineage_flags!(df, instant_kill)
+    return _add_instant_lineage_flags!(_add_lineage_end_phenotypes!(df, pheno_at_end), instant_kill)
 end
 
 function _lineage_required_columns_present(lineage_df::DataFrame; unique_ids::Bool = false)

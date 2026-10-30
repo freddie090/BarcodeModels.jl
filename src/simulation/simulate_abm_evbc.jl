@@ -190,6 +190,9 @@ function _run_abm_passage_experiment!(
         "nR_vec" => nR_vec,
         "nE_vec" => nE_vec
     )
+    if treat || instant_kill !== nothing
+        out["pheno_at_end"] = _lineage_phenotypes(cells)
+    end
     if sub_sample_cells
         out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
     end
@@ -389,6 +392,9 @@ function _run_abm_passage_experiment!(
         "nDR_vec" => nDR_vec,
         "nR_vec" => nR_vec,
     )
+    if treat
+        out["pheno_at_end"] = _lineage_phenotypes(cells)
+    end
     if sub_sample_cells
         out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
     end
@@ -439,13 +445,14 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
     sub_lin_df_outs = DataFrame[]
     lineage_df_outs = DataFrame[]
     sim_dfs = DataFrame[]
-    kill_rows = model.abm.insta_kill ? NamedTuple[] : nothing
+    kill_rows = drug_treatment && model.abm.insta_kill ? NamedTuple[] : nothing
+    pre_treatment_mutations = drug_treatment && model.abm.save_pre_treatment_mutations ? DataFrame[] : nothing
 
     nseed_last = _nseed_last(exp.Nseed)
     next_cell_id = Int64(1)
     for i in 1:n_rep
         rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
-        instant_kill = _instant_kill_state(model.abm)
+        instant_kill = _instant_kill_state(model.abm, drug_treatment)
         rep_cells_evbc, next_cell_id, lineage_records = _to_evbc_cells(rep_cells_base[i];
             t0 = 0.0, start_id = next_cell_id)
         extend_with_dead_cells!(rep_cells_evbc, model.abm.Nbuff, make_dead_cell_evbc)
@@ -457,7 +464,7 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
             treat_ons = exp.treat_ons, treat_offs = exp.treat_offs,
             dt_save_at = dt_save_at, Nbuff = model.abm.Nbuff,
             R_real = R_real, t_frac = t_frac, rep = i,
-            treat = drug_treatment, drug_effect = de,
+            treat = drug_treatment && !model.abm.insta_kill, drug_effect = de,
             next_cell_id = next_cell_id,
             lineage_records = lineage_records,
             sub_sample_cells = sub_sample_cells, K = K,
@@ -476,8 +483,10 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
         )
         push!(sim_dfs, sim_df)
         instant_kill === nothing || push!(kill_rows, _instant_kill_row(instant_kill, i))
+        _collect_pre_treatment_mutations!(pre_treatment_mutations, instant_kill, i)
         push!(lin_df_outs, join_dfs(sim["cell_lin_df_vec"], "bc"))
-        push!(lineage_df_outs, _lineage_df(sim["lineage_records"], i, sim["alive_ids"]; instant_kill = instant_kill))
+        push!(lineage_df_outs, _lineage_df(sim["lineage_records"], i, sim["alive_ids"];
+            instant_kill = instant_kill, pheno_at_end = get(sim, "pheno_at_end", nothing)))
         if sub_sample_cells
             push!(sub_lin_df_outs, join_dfs(sim["sub_samp_cell_lin_df_vec"], "bc"))
         end
@@ -534,6 +543,7 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
         out["sub_lin_df"] = join_dfs(sub_lin_df_outs, "bc")
     end
     kill_rows === nothing || (out["inst_kill_df"] = DataFrame(kill_rows))
+    _add_pre_treatment_mutation_outputs!(out, pre_treatment_mutations)
     return _add_neutral_outputs!(out, neutral_tracker)
 end
 
@@ -615,7 +625,8 @@ function _simulate_experiment_abm(model::ResDmg_ABM_EvBC, exp::ExperimentParams;
         )
         push!(sim_dfs, sim_df)
         push!(lin_df_outs, join_dfs(sim["cell_lin_df_vec"], "bc"))
-        push!(lineage_df_outs, _lineage_df(sim["lineage_records"], i, sim["alive_ids"]))
+        push!(lineage_df_outs, _lineage_df(sim["lineage_records"], i, sim["alive_ids"];
+            pheno_at_end = get(sim, "pheno_at_end", nothing)))
         if sub_sample_cells
             push!(sub_lin_df_outs, join_dfs(sim["sub_samp_cell_lin_df_vec"], "bc"))
         end
@@ -742,6 +753,9 @@ function _run_abm_simple!(
         "nR_vec" => nR_vec,
         "nE_vec" => nE_vec
     )
+    if treat || instant_kill !== nothing
+        out["pheno_at_end"] = _lineage_phenotypes(cells)
+    end
     if sub_sample_cells
         out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
     end
@@ -817,6 +831,9 @@ function _run_abm_simple!(
         "nDR_vec" => nDR_vec,
         "nR_vec" => nR_vec,
     )
+    if treat
+        out["pheno_at_end"] = _lineage_phenotypes(cells)
+    end
     if sub_sample_cells
         out["sub_samp_cell_lin_df_vec"] = samp_cell_lin_df_vec
     end
@@ -838,7 +855,7 @@ function _simulate_simple_abm(model::ResPop_ABM_EvBC, sim::SimpleSimParams; kwar
     validate_resistant_birth_drug_effect(model.params, R_real; drug_effect = de)
     _validate_instant_kill_run(model.abm, drug_treatment, (sim.tmax,))
     model_eff = _with_drug_effect(model, de)
-    instant_kill = _instant_kill_state(model.abm)
+    instant_kill = _instant_kill_state(model.abm, drug_treatment)
     neutral_tracker = _neutral_tracker(model.abm)
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
                        bc_unif = bc_unif, Nbc = Nbc, bc_probs = bc_probs)
@@ -854,7 +871,7 @@ function _simulate_simple_abm(model::ResPop_ABM_EvBC, sim::SimpleSimParams; kwar
         treat_ons = sim.treat_ons, treat_offs = sim.treat_offs,
         dt_save_at = dt_save_at,
         R_real = R_real, t_frac = t_frac, rep = 1,
-        treat = drug_treatment, drug_effect = de,
+        treat = drug_treatment && !model.abm.insta_kill, drug_effect = de,
         next_cell_id = next_cell_id,
         lineage_records = lineage_records,
         sub_sample_cells = false, K = 0,
@@ -873,9 +890,11 @@ function _simulate_simple_abm(model::ResPop_ABM_EvBC, sim::SimpleSimParams; kwar
     out = Dict(
         "lin_df" => join_dfs(sim_out["cell_lin_df_vec"], "bc"),
         "sol_df" => sol_df,
-        "lineage_df" => _lineage_df(sim_out["lineage_records"], 1, sim_out["alive_ids"]; instant_kill = instant_kill)
+        "lineage_df" => _lineage_df(sim_out["lineage_records"], 1, sim_out["alive_ids"];
+            instant_kill = instant_kill, pheno_at_end = get(sim_out, "pheno_at_end", nothing))
     )
     instant_kill === nothing || (out["inst_kill_df"] = DataFrame([_instant_kill_row(instant_kill, 1)]))
+    _add_pre_treatment_mutation_outputs!(out, instant_kill)
     return _add_neutral_outputs!(out, neutral_tracker)
 end
 
@@ -927,7 +946,8 @@ function _simulate_simple_abm(model::ResDmg_ABM_EvBC, sim::SimpleSimParams; kwar
     out = Dict(
         "lin_df" => join_dfs(sim_out["cell_lin_df_vec"], "bc"),
         "sol_df" => sol_df,
-        "lineage_df" => _lineage_df(sim_out["lineage_records"], 1, sim_out["alive_ids"])
+        "lineage_df" => _lineage_df(sim_out["lineage_records"], 1, sim_out["alive_ids"];
+            pheno_at_end = get(sim_out, "pheno_at_end", nothing))
     )
     return _add_neutral_outputs!(out, neutral_tracker)
 end

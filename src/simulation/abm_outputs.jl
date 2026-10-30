@@ -74,12 +74,40 @@ end
 
 _add_neutral_outputs!(out, ::Nothing) = out
 
+_collect_pre_treatment_mutations!(::Nothing, event, rep) = nothing
+
+function _collect_pre_treatment_mutations!(tables::Vector{DataFrame}, event::InstantKillState, rep)
+    event.pre_treatment_mutations === nothing && return nothing
+    push!(tables, rename(event.pre_treatment_mutations,
+        :population_count => Symbol("DT", rep, "_count"),
+        :population_frequency => Symbol("DT", rep, "_frequency")))
+    return nothing
+end
+
+_add_pre_treatment_mutation_outputs!(out, ::Nothing) = out
+
+function _add_pre_treatment_mutation_outputs!(out, tables::Vector{DataFrame})
+    out["mut_df_pre_treatment"] = isempty(tables) ? DataFrame(mutation_id = Int64[]) :
+        sort!(join_dfs(tables, "mutation_id"), :mutation_id)
+    return out
+end
+
+function _add_pre_treatment_mutation_outputs!(out, event::InstantKillState)
+    event.settings.save_pre_treatment_mutations || return out
+    tables = DataFrame[]
+    _collect_pre_treatment_mutations!(tables, event, 1)
+    return _add_pre_treatment_mutation_outputs!(out, tables)
+end
+
 function _instant_kill_row(event::InstantKillState, rep::Int64)
-    return (rep = rep, time = event.settings.inst_kill_time,
+    population_trigger = _instant_population_trigger(event.settings)
+    time = population_trigger ? event.time : event.settings.inst_kill_time
+    row = (rep = rep, time = time,
         mode = event.settings.inst_kill_mode,
         status = event.applied ? "applied" : "not_reached",
         mutation_id = event.mutation_id, carrier_fraction = event.carrier_fraction,
         N_before = event.N_before, N_killed = event.N_killed, N_after = event.N_after)
+    return population_trigger ? merge(row, (inst_kill_N = event.settings.inst_kill_N,)) : row
 end
 
 """Append ResPop population and passage trajectories to output vectors."""
