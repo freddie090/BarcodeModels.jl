@@ -18,6 +18,7 @@ test/lineage_ids.jl
 test/abm_general_fixes.jl
 test/abm_organization.jl
 test/experiment_cleanup.jl
+test/abm_pot_outputs.jl
 model_specs/
 project_specs/
 projects/

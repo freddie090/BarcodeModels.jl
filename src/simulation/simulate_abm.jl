@@ -198,7 +198,8 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
     bc_probs::Vector{Float64} = model.abm.bc_probs,
     dt_save_at::Float64 = model.abm.dt_save_at,
     t_frac::Float64 = model.abm.t_frac,
-    neutral_tracker = _neutral_tracker(model.abm))
+    neutral_tracker = _neutral_tracker(model.abm),
+    pot_lin_dfs::Union{Nothing, Vector{DataFrame}} = nothing)
 
     Nbuff = model.abm.Nbuff
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
@@ -275,6 +276,7 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
     end
 
     n_rep * final_seed <= length(exp_cells) || error("Not enough cells for $n_rep replicates of size $final_seed.")
+    pot_lin_dfs !== nothing && push!(pot_lin_dfs, get_counts(exp_cells, "POT_P0"))
     rep_cells = sample(exp_cells, n_rep * final_seed, replace = false)
     rep_cells = reshape(rep_cells, (final_seed, n_rep))
 
@@ -309,6 +311,8 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     validate_resistant_birth_drug_effect(model.params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
     neutral_tracker = _neutral_tracker(model.abm)
+    inc_pot = Bool(_kw(kwargs, :inc_pot, exp.inc_pot))
+    lin_df_outs = DataFrame[]
     rep_cells = _expand_split_cells_abm(model_eff, exp, n_rep;
                                         R_real = R_real,
                                         drug_effect = de,
@@ -317,11 +321,11 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
                                         Nbc = Nbc,
                                         dt_save_at = dt_save_at,
                                         t_frac = t_frac,
-                                        neutral_tracker = neutral_tracker)
+                                        neutral_tracker = neutral_tracker,
+                                        pot_lin_dfs = inc_pot ? lin_df_outs : nothing)
 
     fin_t_outs = Float64[]
     fin_u_outs = Float64[]
-    lin_df_outs = DataFrame[]
     sub_lin_df_outs = DataFrame[]
     sim_dfs = DataFrame[]
     kill_rows = drug_treatment && model.abm.insta_kill ? NamedTuple[] : nothing
@@ -619,7 +623,8 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
     bc_probs::Vector{Float64} = model.abm.bc_probs,
     dt_save_at::Float64 = model.abm.dt_save_at,
     t_frac::Float64 = model.abm.t_frac,
-    neutral_tracker = _neutral_tracker(model.abm))
+    neutral_tracker = _neutral_tracker(model.abm),
+    pot_lin_dfs::Union{Nothing, Vector{DataFrame}} = nothing)
 
     Nbuff = model.abm.Nbuff
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
@@ -696,6 +701,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
     end
 
     n_rep * final_seed <= length(exp_cells) || error("Not enough cells for $n_rep replicates of size $final_seed.")
+    pot_lin_dfs !== nothing && push!(pot_lin_dfs, get_counts(exp_cells, "POT_P0"))
     rep_cells = sample(exp_cells, n_rep * final_seed, replace = false)
     rep_cells = reshape(rep_cells, (final_seed, n_rep))
 
@@ -729,6 +735,8 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
     validate_resistant_birth_drug_effect(model.params, R_real; drug_effect = de)
     model_eff = _with_drug_effect(model, de)
     neutral_tracker = _neutral_tracker(model.abm)
+    inc_pot = Bool(_kw(kwargs, :inc_pot, exp.inc_pot))
+    lin_df_outs = DataFrame[]
     rep_cells = _expand_split_cells_abm(model_eff, exp, n_rep;
                                         R_real = R_real,
                                         drug_effect = de,
@@ -737,11 +745,11 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
                                         Nbc = Nbc,
                                         dt_save_at = dt_save_at,
                                         t_frac = t_frac,
-                                        neutral_tracker = neutral_tracker)
+                                        neutral_tracker = neutral_tracker,
+                                        pot_lin_dfs = inc_pot ? lin_df_outs : nothing)
 
     fin_t_outs = Float64[]
     fin_u_outs = Float64[]
-    lin_df_outs = DataFrame[]
     sub_lin_df_outs = DataFrame[]
     sim_dfs = DataFrame[]
 

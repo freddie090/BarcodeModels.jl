@@ -427,6 +427,8 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
     model_eff = _with_drug_effect(model, de)
     neutral_tracker = _neutral_tracker(model.abm)
     base_model_eff = ResPop_ABM(model_eff.params; abm = model_eff.abm)
+    inc_pot = Bool(_kw(kwargs, :inc_pot, exp.inc_pot))
+    lin_df_outs = DataFrame[]
     rep_cells_base = _expand_split_cells_abm(base_model_eff, exp, n_rep;
                                              R_real = R_real,
                                              drug_effect = de,
@@ -437,11 +439,11 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
                                              bc_probs = bc_probs,
                                              dt_save_at = dt_save_at,
                                              t_frac = t_frac,
-                                             neutral_tracker = neutral_tracker)
+                                             neutral_tracker = neutral_tracker,
+                                             pot_lin_dfs = inc_pot ? lin_df_outs : nothing)
 
     fin_t_outs = Float64[]
     fin_u_outs = Float64[]
-    lin_df_outs = DataFrame[]
     sub_lin_df_outs = DataFrame[]
     lineage_df_outs = DataFrame[]
     sim_dfs = DataFrame[]
@@ -572,6 +574,8 @@ function _simulate_experiment_abm(model::ResDmg_ABM_EvBC, exp::ExperimentParams;
     model_eff = _with_drug_effect(model, de)
     neutral_tracker = _neutral_tracker(model.abm)
     base_model_eff = ResDmg_ABM(model_eff.params; abm = model_eff.abm)
+    inc_pot = Bool(_kw(kwargs, :inc_pot, exp.inc_pot))
+    lin_df_outs = DataFrame[]
     rep_cells_base = _expand_split_cells_abm(base_model_eff, exp, n_rep;
                                              R_real = R_real,
                                              drug_effect = de,
@@ -582,11 +586,11 @@ function _simulate_experiment_abm(model::ResDmg_ABM_EvBC, exp::ExperimentParams;
                                              bc_probs = bc_probs,
                                              dt_save_at = dt_save_at,
                                              t_frac = t_frac,
-                                             neutral_tracker = neutral_tracker)
+                                             neutral_tracker = neutral_tracker,
+                                             pot_lin_dfs = inc_pot ? lin_df_outs : nothing)
 
     fin_t_outs = Float64[]
     fin_u_outs = Float64[]
-    lin_df_outs = DataFrame[]
     sub_lin_df_outs = DataFrame[]
     lineage_df_outs = DataFrame[]
     sim_dfs = DataFrame[]
