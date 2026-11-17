@@ -218,7 +218,7 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
             stage_sim = ABMSimParams(
                 t0 = 0.0,
                 tmax = exp.t_exp[i],
-                Nmax = exp.Nmax,
+                Nmax = exp.Nmax_exp,
                 Cc = exp.Cc,
                 treat_ons = [0.0],
                 treat_offs = [0.0],
@@ -241,7 +241,7 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
         final_sim = ABMSimParams(
             t0 = 0.0,
             tmax = exp.t_exp[end],
-            Nmax = exp.Nmax,
+            Nmax = exp.Nmax_exp,
             Cc = exp.Cc,
             treat_ons = [0.0],
             treat_offs = [0.0],
@@ -258,7 +258,7 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
         final_sim = ABMSimParams(
             t0 = 0.0,
             tmax = exp.t_exp,
-            Nmax = exp.Nmax,
+            Nmax = exp.Nmax_exp,
             Cc = exp.Cc,
             treat_ons = [0.0],
             treat_offs = [0.0],
@@ -643,7 +643,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
             stage_sim = ABMSimParams(
                 t0 = 0.0,
                 tmax = exp.t_exp[i],
-                Nmax = exp.Nmax,
+                Nmax = exp.Nmax_exp,
                 Cc = exp.Cc,
                 treat_ons = [0.0],
                 treat_offs = [0.0],
@@ -666,7 +666,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
         final_sim = ABMSimParams(
             t0 = 0.0,
             tmax = exp.t_exp[end],
-            Nmax = exp.Nmax,
+            Nmax = exp.Nmax_exp,
             Cc = exp.Cc,
             treat_ons = [0.0],
             treat_offs = [0.0],
@@ -683,7 +683,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
         final_sim = ABMSimParams(
             t0 = 0.0,
             tmax = exp.t_exp,
-            Nmax = exp.Nmax,
+            Nmax = exp.Nmax_exp,
             Cc = exp.Cc,
             treat_ons = [0.0],
             treat_offs = [0.0],
@@ -1113,7 +1113,7 @@ function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams,
         offset = 0.0
         for i in eachindex(durations)
             durations[i] >= 0 || error("Expansion durations must be nonnegative.")
-            sim = ABMSimParams(tmax = Float64(durations[i]), Nmax = exp.Nmax, Cc = exp.Cc,
+            sim = ABMSimParams(tmax = Float64(durations[i]), Nmax = exp.Nmax_exp, Cc = exp.Cc,
                 treat_ons = Float64[], treat_offs = Float64[], R_real = R_real,
                 dt_save_at = dt_save_at, t_frac = t_frac, Passage = 0, drug_effect = drug_effect)
             out = run_model_core_abm(expansion, ResPopInVivoABMState(cells), sim)

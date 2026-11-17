@@ -399,7 +399,8 @@ Experiment design shared by the model families. The `inc_control` and `inc_pot` 
 | `tmax` | `Float64` or `Vector{Float64}` (required) | Final experiment time horizon(s). | Scalar must be `> 0`; vector values must all be `> 0`, vector length must match effective `n_rep`, and vector mode requires `t_Pass = Float64[]` (no passage events). |
 | `t_Pass` | `Float64` or `Vector{Float64}` (required) | Scheduled passage times. | Strictly `> 0`; use `Float64[]` for no passage events. |
 | `Nseed` | `Int64` or `Vector{Int64}` (required) | Passage bottleneck sample size(s). | Positive; vector form must align with expansion design. |
-| `Nmax` | `Int64` (required) | Population cap trigger for growth/passaging logic. | `> 0` and `Nmax <= Cc`. |
+| `Nmax` | `Int64` (required) | Population threshold for each replicate after the split. Reaching it triggers an available passage or stops that replicate. | `> 0` and `Nmax <= Cc`. |
+| `Nmax_exp` | `Int64` (`Nmax`) | Population threshold for the shared pool before the split. Reaching it ends the current expansion stage. | `> 0` and `Nmax_exp <= Cc`. Omit it to use `Nmax` in both phases. |
 | `Cc` | `Int64` (required) | Carrying-capacity scale in logistic terms. | `> 0`. |
 | `treat_ons` | `Vector{Float64}` (required) | Treatment on-times. | Vector of numeric times. |
 | `treat_offs` | `Vector{Float64}` (required) | Treatment off-times. | Vector of numeric times. |
@@ -561,6 +562,8 @@ The following Agent-Based model classes are available and dispatched through the
 You can call either:
 - `simulate_experiment(model_evbc, exp)` for full experiment design workflow (expansion/replicates/passaging)
 - `simulate_simple(model_evbc, sim)` for a single-run simplified workflow
+
+Both EvBC variants support the optional `Nmax_exp` setting in `ExperimentParams` when running `simulate_experiment`.
 
 ### EvBC outputs and how to access them
 

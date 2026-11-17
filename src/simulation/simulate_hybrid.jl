@@ -45,7 +45,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
                 t0 = 0.0,
                 tmax = exp.t_exp[i],
                 t_Pass = -1.0,
-                Nmax = exp.Nmax,
+                Nmax = exp.Nmax_exp,
                 Cc = exp.Cc,
                 Nswitch = exp.Nswitch,
                 Aswitch = exp.Aswitch,
@@ -79,7 +79,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
             t0 = 0.0,
             tmax = exp.t_exp[end],
             t_Pass = -1.0,
-            Nmax = exp.Nmax,
+            Nmax = exp.Nmax_exp,
             Cc = exp.Cc,
             Nswitch = exp.Nswitch,
             Aswitch = exp.Aswitch,
@@ -105,7 +105,7 @@ function _simulate_experiment_hybrid(model::ResPop, exp::ExperimentParams; kwarg
             t0 = 0.0,
             tmax = exp.t_exp,
             t_Pass = -1.0,
-            Nmax = exp.Nmax,
+            Nmax = exp.Nmax_exp,
             Cc = exp.Cc,
             Nswitch = exp.Nswitch,
             Aswitch = exp.Aswitch,
@@ -280,7 +280,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
                 t0 = 0.0,
                 tmax = exp.t_exp[i],
                 t_Pass = -1.0,
-                Nmax = exp.Nmax,
+                Nmax = exp.Nmax_exp,
                 Cc = exp.Cc,
                 Nswitch = exp.Nswitch,
                 Aswitch = exp.Aswitch,
@@ -316,7 +316,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
             t0 = 0.0,
             tmax = exp.t_exp[end],
             t_Pass = -1.0,
-            Nmax = exp.Nmax,
+            Nmax = exp.Nmax_exp,
             Cc = exp.Cc,
             Nswitch = exp.Nswitch,
             Aswitch = exp.Aswitch,
@@ -344,7 +344,7 @@ function _simulate_experiment_hybrid(model::ResDmg, exp::ExperimentParams; kwarg
             t0 = 0.0,
             tmax = exp.t_exp,
             t_Pass = -1.0,
-            Nmax = exp.Nmax,
+            Nmax = exp.Nmax_exp,
             Cc = exp.Cc,
             Nswitch = exp.Nswitch,
             Aswitch = exp.Aswitch,
@@ -601,7 +601,7 @@ function _run_invivo_hybrid_segment(model::ResPopInVivo, eg0, eg1, duration, exp
     state = _invivo_state(eg0, eg1; pass_num = 0)
     duration == 0 && return (t = [0.0], u = [to_componentarray(state)])
     sim = SimParams(n0 = sum(eg0)+sum(eg1), tmax = duration, t_Pass = Float64[],
-        Nmax = exp.Nmax, Cc = exp.Cc, Nswitch = exp.Nswitch, Aswitch = exp.Aswitch,
+        Nmax = exp.Nmax_exp, Cc = exp.Cc, Nswitch = exp.Nswitch, Aswitch = exp.Aswitch,
         R_real = R_real, save_at = save_at, treat_ons = Float64[], treat_offs = Float64[])
     # Passage zero is an output label, not an available extra passage.
     state = _invivo_state(eg0, eg1)

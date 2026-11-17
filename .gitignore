@@ -38,3 +38,4 @@ test/instant_validation/
 /supp.README.md
 test/instant_tx_lineage.jl
 test/lineage_phenotype_snapshots.jl
+test/expansion_population_cap.jl

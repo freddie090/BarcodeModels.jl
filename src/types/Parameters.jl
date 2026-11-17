@@ -413,6 +413,7 @@ struct ExperimentParams
     t_Pass::Union{Float64, Vector{Float64}}
     Nseed::Union{Int64, Vector{Int64}}
     Nmax::Int64
+    Nmax_exp::Int64
     Cc::Int64
     treat_ons::Vector{Float64}
     treat_offs::Vector{Float64}
@@ -502,7 +503,7 @@ function SimpleSimParams(; n0, tmax, Nmax, Cc,
     )
 end
 
-function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
+function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc, Nmax_exp=Nmax,
                                     treat_ons, treat_offs, t_keep, Nswitch,
                                     Aswitch, save_at, n_rep, drug_treatment,
                                     full_sol)
@@ -539,6 +540,10 @@ function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
     Cc > 0 || error("Cc must be > 0.")
     Nmax <= Cc || error("Nmax must be <= Cc.")
 
+    Nmax_exp isa Integer || error("Nmax_exp must be an integer.")
+    Nmax_exp > 0 || error("Nmax_exp must be > 0.")
+    Nmax_exp <= Cc || error("Nmax_exp must be <= Cc.")
+
     treat_ons isa AbstractVector{<:Real} || error("treat_ons must be a vector of numbers.")
     treat_offs isa AbstractVector{<:Real} || error("treat_offs must be a vector of numbers.")
     t_keep isa AbstractVector{<:Real} || error("t_keep must be a vector of numbers.")
@@ -557,7 +562,7 @@ function validate_experiment_params(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
     return nothing
 end
 
-function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
+function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc, Nmax_exp=Nmax,
                           treat_ons, treat_offs, t_keep, Nswitch,
                           Aswitch=1000.0,
                           save_at=0.5, n_rep=4, drug_treatment=true,
@@ -569,6 +574,7 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         t_Pass = t_Pass,
         Nseed = Nseed,
         Nmax = Nmax,
+        Nmax_exp = Nmax_exp,
         Cc = Cc,
         treat_ons = treat_ons,
         treat_offs = treat_offs,
@@ -594,6 +600,7 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc,
         t_Pass,
         Nseed,
         Int64(Nmax),
+        Int64(Nmax_exp),
         Int64(Cc),
         Vector{Float64}(treat_ons),
         Vector{Float64}(treat_offs),
@@ -644,6 +651,12 @@ ABMParams(Nbuff, t_frac, dt_save_at, skew_lib, use_lib_probs, bc_unif, Nbc,
     bc_probs, sub_sample_cells, K) =
     ABMParams(Nbuff, t_frac, dt_save_at, skew_lib, use_lib_probs, bc_unif, Nbc,
         bc_probs, sub_sample_cells, K, false, false)
+
+# Preserve the positional constructor with a shared threshold.
+ExperimentParams(n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc, treat_ons, treat_offs,
+    t_keep, Nswitch, Aswitch, save_at, n_rep, drug_treatment, full_sol, inc_control, inc_pot) =
+    ExperimentParams(n0, t_exp, tmax, t_Pass, Nseed, Nmax, Nmax, Cc, treat_ons, treat_offs,
+        t_keep, Nswitch, Aswitch, save_at, n_rep, drug_treatment, full_sol, inc_control, inc_pot)
 
 ExperimentParams(n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc, treat_ons, treat_offs,
     t_keep, Nswitch, Aswitch, save_at, n_rep, drug_treatment, full_sol) =
