@@ -457,6 +457,7 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
         instant_kill = _instant_kill_state(model.abm, drug_treatment)
         rep_cells_evbc, next_cell_id, lineage_records = _to_evbc_cells(rep_cells_base[i];
             t0 = 0.0, start_id = next_cell_id)
+        rep_cells_base[i] = CancerCell[]
         extend_with_dead_cells!(rep_cells_evbc, model.abm.Nbuff, make_dead_cell_evbc)
 
         sim = _run_abm_passage_experiment!(
@@ -473,6 +474,7 @@ function _simulate_experiment_abm(model::ResPop_ABM_EvBC, exp::ExperimentParams;
             neutral_tracker = neutral_tracker,
             instant_kill = instant_kill
         )
+        rep_cells_evbc = CancerCellEvBC[]
         next_cell_id = sim["next_cell_id"]
 
         sim_df = DataFrame(
@@ -601,6 +603,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM_EvBC, exp::ExperimentParams;
         rep_tmax = _replicate_tmax(exp.tmax, n_rep, i)
         rep_cells_evbc, next_cell_id, lineage_records = _to_evbc_cells(rep_cells_base[i];
             t0 = 0.0, start_id = next_cell_id)
+        rep_cells_base[i] = ResDmgCell[]
         extend_with_dead_cells!(rep_cells_evbc, model.abm.Nbuff, make_dead_resdmg_cell_evbc)
 
         sim = _run_abm_passage_experiment!(
@@ -616,6 +619,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM_EvBC, exp::ExperimentParams;
             sub_sample_cells = sub_sample_cells, K = K,
             neutral_tracker = neutral_tracker
         )
+        rep_cells_evbc = ResDmgCellEvBC[]
         next_cell_id = sim["next_cell_id"]
 
         sim_df = DataFrame(

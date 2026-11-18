@@ -283,7 +283,6 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
     fin_rep_cells = Vector{Vector{CancerCell}}(undef, n_rep)
     for i in 1:n_rep
         fin_rep_cells[i] = collect(rep_cells[:, i])
-        extend_with_dead_cells!(fin_rep_cells[i], Nbuff, make_dead_cell)
     end
     return fin_rep_cells
 end
@@ -350,6 +349,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
             neutral_tracker = neutral_tracker,
             instant_kill = instant_kill
         )
+        rep_cells[i] = CancerCell[]
 
         sim_df = DataFrame(
             t = sim["tvec"],
@@ -708,7 +708,6 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
     fin_rep_cells = Vector{Vector{ResDmgCell}}(undef, n_rep)
     for i in 1:n_rep
         fin_rep_cells[i] = collect(rep_cells[:, i])
-        extend_with_dead_cells!(fin_rep_cells[i], Nbuff, make_dead_resdmg_cell)
     end
     return fin_rep_cells
 end
@@ -770,6 +769,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
             sub_sample_cells = sub_sample_cells, K = K,
             neutral_tracker = neutral_tracker
         )
+        rep_cells[i] = ResDmgCell[]
 
         sim_df = DataFrame(
             t = sim["tvec"],
@@ -1146,7 +1146,6 @@ function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams,
         batch = sampled[((i-1)*nseed+1):(i*nseed)]
         batch, stats = engraftment_selection(batch, model.params.pEG, model.params.sEG)
         _push_invivo_engraftment!(grafts, rec.cond, rec.rep, 1, stats)
-        extend_with_dead_cells!(batch, n_buff, make_dead_cell_invivo)
         push!(reps, batch)
     end
     return reps, grafts
@@ -1240,12 +1239,14 @@ function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams
     end
     times, totals, conditions, replicates = Float64[], Float64[], String[], Int64[]
     for (i, rec) in enumerate(design)
+        extend_with_dead_cells!(reps[i], model.abm.Nbuff, make_dead_cell_invivo)
         result = _run_abm_passage_experiment!(model_eff, reps[i];
             tmax = _replicate_tmax(exp.tmax, n_rep, rec.rep), t_Pass = exp.t_Pass,
             Nseed = _nseed_last(exp.Nseed), Nmax = exp.Nmax, Cc = exp.Cc,
             treat_ons = exp.treat_ons, treat_offs = exp.treat_offs, dt_save_at = dt_save_at,
             Nbuff = model.abm.Nbuff, R_real = R_real, t_frac = t_frac, rep = rec.rep, treat = rec.treat,
             drug_effect = de, cond = rec.cond, sub_sample_cells = sub_sample_cells, K = K, full_pheno_bc = full_pheno_bc)
+        reps[i] = InVivoCancerCell[]
         push!(lin_dfs, result["lin_df"])
         full_pheno_bc && push!(pheno_dfs, result["pheno_bc_df"])
         sub_sample_cells && push!(sub_dfs, result["sub_lin_df"])
