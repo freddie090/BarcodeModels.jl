@@ -123,8 +123,8 @@ function n_alive(cell_arr)::Int
     return count
 end
 
-live_positions(cells) = [cell.alive ? 1 : 0 for cell in cells]
-dead_positions(cells) = [cell.alive ? 0 : 1 for cell in cells]
+live_positions(cells) = UInt8[cell.alive ? 1 : 0 for cell in cells]
+dead_positions(cells) = UInt8[cell.alive ? 0 : 1 for cell in cells]
 alive_cells(cells) = filter(cell -> cell.alive, cells)
 
 """One main-replicate instantaneous treatment and its observed outcome."""

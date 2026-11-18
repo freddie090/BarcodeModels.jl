@@ -39,4 +39,5 @@ test/instant_validation/
 test/instant_tx_lineage.jl
 test/lineage_phenotype_snapshots.jl
 test/expansion_population_cap.jl
+test/abm_flag_storage.jl
 scripts/
