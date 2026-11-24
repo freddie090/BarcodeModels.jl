@@ -50,6 +50,7 @@ function _core_grow_kill_abm!(
     bdmax = bmax + dmax + transitionmax
 
     t = sim.t0
+    _lin_track_start!(sim, cells)
     t_rec_change = sim.tmax * sim.t_frac
     t_rec = t_rec_change
     tvec = Float64[t]
@@ -73,12 +74,12 @@ function _core_grow_kill_abm!(
     if Nt > 0 && (_instant_kill_due(instant_kill, t, t) || _instant_population_due(instant_kill, Nt))
         Nt = _record_instant_kill!(cells, phen_counts, live_vec, dead_vec, instant_kill,
             sim, Nvec, tvec, Svec, Rvec, Evec, Pvec; time = t)
-        Nt == 0 && return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
+        Nt == 0 && return _lin_track_end!(sim, cells, t, GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t))
     end
 
     # A population already at the cap needs no event proposal or clock advance.
     if Nt >= sim.Nmax
-        return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
+        return _lin_track_end!(sim, cells, t, GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t))
     end
 
     if bdmax == 0.0
@@ -86,7 +87,7 @@ function _core_grow_kill_abm!(
             t = instant_kill.settings.inst_kill_time
             Nt = _record_instant_kill!(cells, phen_counts, live_vec, dead_vec, instant_kill,
                 sim, Nvec, tvec, Svec, Rvec, Evec, Pvec)
-            Nt == 0 && return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
+            Nt == 0 && return _lin_track_end!(sim, cells, t, GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t))
         end
         t = sim.tmax
         push!(tvec, t)
@@ -115,12 +116,13 @@ function _core_grow_kill_abm!(
             Nt = _record_instant_kill!(cells, phen_counts, live_vec, dead_vec, instant_kill,
                 sim, Nvec, tvec, Svec, Rvec, Evec, Pvec)
             if Nt == 0 || t == sim.tmax
-                return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
+                return _lin_track_end!(sim, cells, t, GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t))
             end
             # Discard the interrupted proposal; resume the stochastic clock after killing.
             continue
         end
         t += dt
+        _lin_track_until!(sim.lin_tracker, cells, min(t, sim.tmax), sim.Passage)
 
         if t >= t_rec
             push!(Nvec, Nt)
@@ -218,7 +220,7 @@ function _core_grow_kill_abm!(
             if _instant_population_due(instant_kill, Nt)
                 Nt = _record_instant_kill!(cells, phen_counts, live_vec, dead_vec, instant_kill,
                     sim, Nvec, tvec, Svec, Rvec, Evec, Pvec; time = t)
-                Nt == 0 && return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
+                Nt == 0 && return _lin_track_end!(sim, cells, t, GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t))
             end
             if Nt >= sim.Nmax
                 push!(Nvec, Nt)
@@ -227,7 +229,7 @@ function _core_grow_kill_abm!(
                 push!(Rvec, phen_counts.Rcount)
                 push!(Evec, phen_counts.Ecount)
                 push!(Pvec, sim.Passage)
-                return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t)
+                return _lin_track_end!(sim, cells, t, GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t))
             end
         end
 
@@ -267,7 +269,7 @@ function _core_grow_kill_abm!(
     end
 
     fin_t = instant_kill === nothing ? round(t, digits = 4) : t
-    return GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, fin_t)
+    return _lin_track_end!(sim, cells, t, GrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, fin_t))
 end
 
 function run_model_core_abm(model::ResPop_ABM_EvBC, state::ResPopABMEvBCState, sim::ABMSimParams;

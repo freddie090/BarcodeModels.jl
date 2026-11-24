@@ -115,6 +115,7 @@ Features of the simple simulation layer include:
 
 - `sol_df`: time-series population output table for the simulated run.
 - `lin_df`: barcode abundance table for ABM model classes.
+- `lin_track_df`: optional barcode trajectories when `lin_track=true`; see [lineage-count tracking](#lineage-count-tracking-for-abm-models).
 - `lineage_df`: EvBC-only ground-truth lineage table with parent-child relationships and lineage metadata.
 
 InVivo simple simulations return EG-stratified population counts and support optional ABM phenotype-by-barcode outputs. Engraftment, control replicates and pool splitting belong to the full experiment workflow.
@@ -140,6 +141,7 @@ Features of the experimental design include:
 
 - `sol_df`: full experiment trajectory table across time and replicate outputs.
 - `lin_df`: barcode abundance summary table across replicate/passage outputs.
+- `lin_track_df`: optional POT and replicate barcode trajectories when `lin_track=true`; see [lineage-count tracking](#lineage-count-tracking-for-abm-models).
 - `t`: summary vector of sampled times (returned unless `just_lin=true`).
 - `u`: summary vector of population sizes aligned to `t` (returned unless `just_lin=true`).
 - `sub_lin_df`: optional subsampled barcode table when `sub_sample_cells=true`.
@@ -300,6 +302,63 @@ independent = ResPopParams(b=0.8, d=0.2, mu=0.01, sig=0.02, del=0.1,
 
 
 
+## Lineage-count tracking for ABM models
+
+Enable `lin_track` to record barcode abundances through time for stacked-area or Muller-style plots. It is available for `ResPop_ABM`, `ResDmg_ABM`, both EvBC variants, and `ResPopInVivo_ABM`, in both simulation APIs. Tracking groups cells by inherited barcode; EvBC ancestry remains available separately in `lineage_df`.
+
+The settings belong to `ExperimentParams` and `SimpleSimParams`, and can also be overridden as keywords to `simulate_experiment` or `simulate_simple`:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `lin_track` | `false` | Enable the additional `lin_track_df` output. |
+| `lin_track_rec_t` | `0.1` | Fixed recording interval in simulation time units (days when rates use days). Must be finite and positive. Independent of `t_frac`, `dt_save_at`, and `save_at`. |
+| `top_x` | `100` | Maximum number of barcodes retained per snapshot, ranked by total live-cell count. Must be a positive integer. Ties are ordered by barcode. |
+
+Using an ABM `model_abm` and the experiment `exp` from [Quick start](#quick-start):
+
+```julia
+# Single population: store tracking options in SimpleSimParams.
+sim_track = SimpleSimParams(
+    n0 = 100, tmax = 10.0, Nmax = 10000, Cc = 10000,
+    drug_treatment = false,
+    lin_track = true, lin_track_rec_t = 0.1, top_x = 100
+)
+simple_out = simulate_simple(model_abm, sim_track)
+simple_tracks = simple_out["lin_track_df"]
+
+# Full experiment: keyword options override the values stored in exp.
+experiment_out = simulate_experiment(model_abm, exp;
+    lin_track = true, lin_track_rec_t = 0.1, top_x = 100)
+tracks = experiment_out["lin_track_df"]
+
+# Select one treatment replicate for plotting.
+rep1_tracks = filter(row -> row.cond == "DT" && row.rep == 1, tracks)
+```
+
+Full experiments record the common expansion pool (`cond="POT", rep=0, passage=0`) and the subsequent replicates whenever `lin_track=true`, independently of `inc_pot`, `full_sol`, or `just_lin`. POT time accumulates across expansion stages; each replicate starts its own clock at zero. InVivo control replicates use `cond="CO"`. Simple simulations use `cond="DT", rep=1, passage=1`, including runs with `drug_treatment=false`.
+
+In addition to the regular time grid, tracking saves initial and final states and both sides of expansion bottlenecks, replicate passages, and supported instantaneous treatment events. These extra snapshots can share a timestamp. Tracking stops at the actual endpoint, including an early population cap or extinction, and does not consume simulation random draws.
+
+### Tracking table and plotting
+
+`lin_track_df` has one row per retained barcode per snapshot:
+
+| Column(s) | Meaning |
+|---|---|
+| `snapshot` | Snapshot identifier; preserves recording order when times are equal. |
+| `t` | Simulation time within the POT or replicate clock. |
+| `cond`, `rep`, `passage` | Population condition, replicate index and passage number. |
+| `event` | `"grid"` for regular observations, `"start"` / `"end"` for simulation segments, or `"pre_treatment"` / `"post_treatment"` for instantaneous treatment. Consecutive segment ends/starts capture passage and expansion bottlenecks. |
+| `bc` | Inherited barcode identity. An empty population has one row with `bc=missing` and zero counts. |
+| `N` | Total live-cell count for this barcode. |
+| `population_N` | Total live population before applying `top_x`, repeated on each row of a snapshot. |
+| `nS`, `nR`, `nE` | Phenotype counts for ResPop and InVivo ABMs. InVivo counts combine EG0 and EG1. |
+| `nS`, `nDS`, `nDR`, `nR` | Phenotype counts for ResDmg ABMs. |
+
+For a plot, select one condition/replicate and use `bc` as the lineage identity and `t` as the horizontal coordinate. Use `N` for absolute abundance, or `N / population_N` for frequency when `population_N > 0`. Preserve `snapshot` order at equal times to retain abrupt population changes.
+
+`top_x` is applied separately at every snapshot to limit output memory, so the retained barcodes can change over time. An omitted barcode may be below the cutoff and should not automatically be interpreted as extinct. For each snapshot, the omitted population is `first(population_N) - sum(N)`; this can be plotted as an "other" category. Set `top_x` at least as large as the number of distinct barcodes in the run to retain the complete barcode distribution. Shorter recording intervals and larger `top_x` values increase output size.
+
 ## Parameter reference
 
 All ResPop, ResDmg and ResPopInVivo model constructors require `b > d` for positive baseline growth. Effective growth under treatment can still be negative.
@@ -377,7 +436,7 @@ Barcode initialization supports three modes: default sequential IDs, generated s
 | Parameter | Type (default) | Meaning | Constraints / notes |
 |---|---|---|---|
 | `Nbuff` | `Int64` (`100000`) | Cell-buffer size (live + dead slots). | Increase for large populations; affects memory. |
-| `t_frac` | `Float64` (`0.005`) | Fraction of `tmax` used for ABM recording interval. | Must be in `[0, 1]` at runtime. |
+| `t_frac` | `Float64` (`0.005`) | Fraction of `tmax` used for ABM population trajectory recording. | Must be in `[0, 1]` at runtime; barcode trajectory cadence uses `lin_track_rec_t`. |
 | `dt_save_at` | `Float64` (`0.1`) | Drug concentration interpolation/save cadence for ABM. | Positive recommended. |
 | `skew_lib` | `Bool` (`false`) | Enable skewed barcode library initialization. | ABM-only feature. |
 | `use_lib_probs` | `Bool` (`false`) | Enable caller-supplied barcode library probabilities. | Mutually exclusive with `skew_lib`. |
@@ -413,6 +472,9 @@ Experiment design shared by the model families. The `inc_control` and `inc_pot` 
 | `full_sol` | `Bool` (`false`) | Return full per-time simulated trajectory table. | Boolean. |
 | `inc_control` | `Bool` (`false`) | Include untreated controls alongside treated InVivo replicates. | InVivo only; `drug_treatment=false` produces controls only. |
 | `inc_pot` | `Bool` (`false`) | Include the common pool in InVivo outputs. | InVivo only; `POT` population rows and, for ABM, `POT_P0` barcode columns. |
+| `lin_track` | `Bool` (`false`) | Record barcode trajectories in `lin_track_df`, including POT and replicate populations. | ABM only; also available in `SimpleSimParams`. |
+| `lin_track_rec_t` | `Float64` (`0.1`) | Fixed time interval between barcode trajectory snapshots. | Finite and `> 0`; also available in `SimpleSimParams`. |
+| `top_x` | `Int64` (`100`) | Maximum number of most abundant barcodes retained per snapshot. | Positive integer; also available in `SimpleSimParams`. |
 
 Simulation keyword overrides take precedence over stored settings, e.g. `simulate_experiment(model, exp; inc_control=true)`.
 

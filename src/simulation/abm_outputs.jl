@@ -1,3 +1,95 @@
+"""Construct the optional fixed-interval, top-barcode trajectory recorder."""
+function _lin_track_recorder(model, settings, kwargs)
+    enabled = _kw(kwargs, :lin_track, settings.lin_track)
+    rec_t = _kw(kwargs, :lin_track_rec_t, settings.lin_track_rec_t)
+    top_x = _kw(kwargs, :top_x, settings.top_x)
+    validate_lin_track_params(enabled, rec_t, top_x)
+    enabled || return nothing
+    df = DataFrame(snapshot = Int64[], t = Float64[], cond = String[], rep = Int64[],
+        passage = Int64[], event = String[], bc = Union{Missing, Float64}[],
+        N = Int64[], population_N = Int64[], nS = Int64[], nR = Int64[])
+    if model isa Union{ResDmg_ABM, ResDmg_ABM_EvBC}
+        df.nDS = Int64[]
+        df.nDR = Int64[]
+    else
+        df.nE = Int64[]
+    end
+    return LinTrackRecorder(Float64(rec_t), Int64(top_x), df, "DT", 1, 0.0, 1, 0)
+end
+
+_lin_track_context!(::Nothing, cond, rep) = nothing
+function _lin_track_context!(tracker::LinTrackRecorder, cond, rep)
+    tracker.cond = cond
+    tracker.rep = rep
+    tracker.offset = 0.0
+    tracker.next_tick = 1
+    return nothing
+end
+
+_lin_track_pheno(cell::Union{CancerCell, CancerCellEvBC, InVivoCancerCell}) =
+    cell.E ? 3 : cell.R ? 2 : 1
+_lin_track_pheno(cell::Union{ResDmgCell, ResDmgCellEvBC}) =
+    cell.DS ? 3 : cell.DR ? 4 : cell.R ? 2 : 1
+
+_lin_track_snapshot!(::Nothing, cells, time, passage, event) = nothing
+function _lin_track_snapshot!(tracker::LinTrackRecorder, cells, time, passage, event)
+    counts = Dict{Float64, Vector{Int64}}()
+    population_N = Int64(0)
+    for cell in cells
+        cell.alive || continue
+        population_N += 1
+        abundance = get!(counts, cell.barcode) do
+            zeros(Int64, 4)
+        end
+        abundance[_lin_track_pheno(cell)] += 1
+    end
+    # Stable barcode tie-breaking consumes no simulation random numbers.
+    barcodes = sort!(collect(keys(counts)); by = bc -> (-sum(counts[bc]), bc))
+    resize!(barcodes, min(length(barcodes), tracker.top_x))
+    tracker.snapshot += 1
+    # A missing barcode marks an empty population, including complete extinction.
+    for bc in (isempty(barcodes) ? [missing] : barcodes)
+        n = ismissing(bc) ? zeros(Int64, 4) : counts[bc]
+        row = (snapshot = tracker.snapshot, t = Float64(time), cond = tracker.cond,
+            rep = tracker.rep, passage = tracker.cond == "POT" ? 0 : passage,
+            event = event, bc = bc, N = sum(n), population_N = population_N, nS = n[1], nR = n[2])
+        phenotypes = hasproperty(tracker.counts, :nE) ? (nE = n[3],) : (nDS = n[3], nDR = n[4])
+        push!(tracker.counts, merge(row, phenotypes))
+    end
+    return nothing
+end
+
+_lin_track_until!(::Nothing, cells, time, passage) = nothing
+function _lin_track_until!(tracker::LinTrackRecorder, cells, time, passage)
+    # Evaluate the unchanged pre-event state at every crossed observation time.
+    stop = tracker.offset + time
+    while tracker.next_tick * tracker.rec_t <= stop ||
+          isapprox(tracker.next_tick * tracker.rec_t, stop; rtol = 8eps(Float64), atol = 0.0)
+        tick = min(tracker.next_tick * tracker.rec_t, stop)
+        _lin_track_snapshot!(tracker, cells, tick, passage, "grid")
+        tracker.next_tick += 1
+    end
+    return nothing
+end
+
+function _lin_track_start!(sim::ABMSimParams, cells)
+    tracker = sim.lin_tracker
+    tracker === nothing && return nothing
+    _lin_track_snapshot!(tracker, cells, tracker.offset + sim.t0, sim.Passage, "start")
+    return nothing
+end
+
+function _lin_track_end!(sim::ABMSimParams, cells, time, out)
+    tracker = sim.lin_tracker
+    tracker === nothing && return out
+    time = min(time, sim.tmax)
+    _lin_track_until!(tracker, cells, time, sim.Passage)
+    _lin_track_snapshot!(tracker, cells, tracker.offset + time, sim.Passage, "end")
+    # Expansion stages use local simulation clocks; retain one continuous POT clock.
+    tracker.cond == "POT" && (tracker.offset += time - sim.t0)
+    return out
+end
+
 """Replace missing entries in an ABM output table with zeros."""
 function rep_missings(df::DataFrame)
     for col in names(df)

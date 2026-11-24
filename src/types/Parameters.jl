@@ -373,6 +373,26 @@ function ABMParams(; Nbuff=100000, t_frac=0.005, dt_save_at=0.1,
     )
 end
 
+"""Optional barcode trajectory recorder, shared across experiment segments."""
+mutable struct LinTrackRecorder
+    rec_t::Float64
+    top_x::Int64
+    counts::DataFrame
+    cond::String
+    rep::Int64
+    offset::Float64
+    next_tick::Int64
+    snapshot::Int64
+end
+
+function validate_lin_track_params(lin_track, lin_track_rec_t, top_x)
+    lin_track isa Bool || error("lin_track must be Bool.")
+    lin_track_rec_t isa Real && isfinite(lin_track_rec_t) && lin_track_rec_t > 0 ||
+        error("lin_track_rec_t must be finite and > 0.")
+    top_x isa Integer && !(top_x isa Bool) && top_x > 0 || error("top_x must be a positive integer.")
+    return nothing
+end
+
 """Shared runtime settings for standard and lineage-aware ABM simulations."""
 struct ABMSimParams
     t0::Float64
@@ -386,10 +406,12 @@ struct ABMSimParams
     t_frac::Float64
     Passage::Int64
     drug_effect::Symbol
+    lin_tracker::Union{Nothing, LinTrackRecorder}
 end
 
 function ABMSimParams(; t0 = 0.0, tmax, Nmax, Cc, treat_ons, treat_offs,
-    dt_save_at = 0.1, R_real = "l", t_frac = 0.05, Passage = 1, drug_effect = :d)
+    dt_save_at = 0.1, R_real = "l", t_frac = 0.05, Passage = 1, drug_effect = :d,
+    lin_tracker::Union{Nothing, LinTrackRecorder} = nothing)
 
     return ABMSimParams(
         Float64(t0),
@@ -402,10 +424,18 @@ function ABMSimParams(; t0 = 0.0, tmax, Nmax, Cc, treat_ons, treat_offs,
         normalize_R_real(R_real),
         Float64(t_frac),
         Int64(Passage),
-        normalize_respop_drug_effect(drug_effect)
+        normalize_respop_drug_effect(drug_effect),
+        lin_tracker
     )
 end
 
+"""
+Experiment design settings. For ABMs, `lin_track=true` adds `lin_track_df` with
+POT and replicate barcode trajectories at `lin_track_rec_t` intervals (default
+0.1), retaining the largest `top_x` barcodes per snapshot (default 100).
+Tracking includes initial/final states and both sides of bottlenecks/treatment,
+independently of `inc_pot`, `full_sol` and the population recording cadence.
+"""
 struct ExperimentParams
     n0::Int64
     t_exp::Union{Float64, Vector{Float64}}
@@ -426,8 +456,16 @@ struct ExperimentParams
     full_sol::Bool
     inc_control::Bool
     inc_pot::Bool
+    lin_track::Bool
+    lin_track_rec_t::Float64
+    top_x::Int64
 end
 
+"""
+Single-population simulation settings. ABM barcode trajectories are enabled by
+`lin_track=true`, with `lin_track_rec_t=0.1` and `top_x=100` by default.
+The same options can be overridden as keywords to `simulate_simple`.
+"""
 struct SimpleSimParams
     n0::Int64
     tmax::Float64
@@ -439,6 +477,9 @@ struct SimpleSimParams
     Aswitch::Float64
     save_at::Float64
     drug_treatment::Bool
+    lin_track::Bool
+    lin_track_rec_t::Float64
+    top_x::Int64
 end
 
 function validate_simple_params(; n0, tmax, Nmax, Cc,
@@ -475,7 +516,9 @@ end
 function SimpleSimParams(; n0, tmax, Nmax, Cc,
                          treat_ons=Float64[], treat_offs=Float64[],
                          Nswitch=100, Aswitch=1000.0,
-                         save_at=0.5, drug_treatment=true)
+                         save_at=0.5, drug_treatment=true,
+                         lin_track=false, lin_track_rec_t=0.1, top_x=100)
+    validate_lin_track_params(lin_track, lin_track_rec_t, top_x)
     validate_simple_params(
         n0 = n0,
         tmax = tmax,
@@ -499,7 +542,10 @@ function SimpleSimParams(; n0, tmax, Nmax, Cc,
         Int64(Nswitch),
         Float64(Aswitch),
         Float64(save_at),
-        Bool(drug_treatment)
+        Bool(drug_treatment),
+        lin_track,
+        Float64(lin_track_rec_t),
+        Int64(top_x)
     )
 end
 
@@ -566,7 +612,9 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc, Nmax_exp=N
                           treat_ons, treat_offs, t_keep, Nswitch,
                           Aswitch=1000.0,
                           save_at=0.5, n_rep=4, drug_treatment=true,
-                          full_sol=false, inc_control=false, inc_pot=false)
+                          full_sol=false, inc_control=false, inc_pot=false,
+                          lin_track=false, lin_track_rec_t=0.1, top_x=100)
+    validate_lin_track_params(lin_track, lin_track_rec_t, top_x)
     validate_experiment_params(
         n0 = n0,
         t_exp = t_exp,
@@ -612,9 +660,26 @@ function ExperimentParams(; n0, t_exp, tmax, t_Pass, Nseed, Nmax, Cc, Nmax_exp=N
         Bool(drug_treatment),
         Bool(full_sol),
         Bool(inc_control),
-        Bool(inc_pot)
+        Bool(inc_pot),
+        lin_track,
+        Float64(lin_track_rec_t),
+        Int64(top_x)
     )
 end
+
+# Preserve positional constructors without barcode trajectory settings.
+ABMSimParams(t0, tmax, Nmax, Cc, treat_ons, treat_offs, dt_save_at, R_real, t_frac, Passage, drug_effect) =
+    ABMSimParams(t0, tmax, Nmax, Cc, treat_ons, treat_offs, dt_save_at, R_real, t_frac, Passage, drug_effect, nothing)
+
+SimpleSimParams(n0, tmax, Nmax, Cc, treat_ons, treat_offs, Nswitch, Aswitch, save_at, drug_treatment) =
+    SimpleSimParams(n0, tmax, Nmax, Cc, treat_ons, treat_offs, Nswitch, Aswitch, save_at, drug_treatment,
+        false, 0.1, 100)
+
+ExperimentParams(n0, t_exp, tmax, t_Pass, Nseed, Nmax, Nmax_exp, Cc, treat_ons, treat_offs,
+    t_keep, Nswitch, Aswitch, save_at, n_rep, drug_treatment, full_sol, inc_control, inc_pot) =
+    ExperimentParams(n0, t_exp, tmax, t_Pass, Nseed, Nmax, Nmax_exp, Cc, treat_ons, treat_offs,
+        t_keep, Nswitch, Aswitch, save_at, n_rep, drug_treatment, full_sol, inc_control, inc_pot,
+        false, 0.1, 100)
 
 # Preserve the pre-InVivo positional constructors, including their conversions.
 ABMParams(Nbuff, t_frac, dt_save_at, skew_lib, use_lib_probs, bc_unif, Nbc,

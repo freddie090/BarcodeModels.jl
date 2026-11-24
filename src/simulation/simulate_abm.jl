@@ -19,8 +19,10 @@
     sub_sample_cells::Bool = false,
     K::Int64 = 0,
     neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing,
-    instant_kill::Union{Nothing, InstantKillState} = nothing
+    instant_kill::Union{Nothing, InstantKillState} = nothing,
+    lin_tracker::Union{Nothing, LinTrackRecorder} = nothing
 )
+    _lin_track_context!(lin_tracker, "DT", rep)
     progress_tol = instant_kill === nothing ? 0.1 : 0.0
 
     curr_t = t0
@@ -64,6 +66,7 @@
         prev_curr_t = curr_t
 
         sim = ABMSimParams(
+            lin_tracker = lin_tracker,
             t0 = curr_t,
             tmax = next_t,
             Nmax = Nmax,
@@ -199,7 +202,9 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
     dt_save_at::Float64 = model.abm.dt_save_at,
     t_frac::Float64 = model.abm.t_frac,
     neutral_tracker = _neutral_tracker(model.abm),
-    pot_lin_dfs::Union{Nothing, Vector{DataFrame}} = nothing)
+    pot_lin_dfs::Union{Nothing, Vector{DataFrame}} = nothing,
+    lin_tracker::Union{Nothing, LinTrackRecorder} = nothing)
+    _lin_track_context!(lin_tracker, "POT", 0)
 
     Nbuff = model.abm.Nbuff
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
@@ -216,6 +221,7 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
 
         for i in 1:(length(exp.t_exp) - 1)
             stage_sim = ABMSimParams(
+                lin_tracker = lin_tracker,
                 t0 = 0.0,
                 tmax = exp.t_exp[i],
                 Nmax = exp.Nmax_exp,
@@ -239,6 +245,7 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
         end
 
         final_sim = ABMSimParams(
+            lin_tracker = lin_tracker,
             t0 = 0.0,
             tmax = exp.t_exp[end],
             Nmax = exp.Nmax_exp,
@@ -256,6 +263,7 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
         final_seed = exp.Nseed[end]
     elseif (exp.t_exp isa Float64) && (exp.Nseed isa Int64)
         final_sim = ABMSimParams(
+            lin_tracker = lin_tracker,
             t0 = 0.0,
             tmax = exp.t_exp,
             Nmax = exp.Nmax_exp,
@@ -288,6 +296,7 @@ function _expand_split_cells_abm(model::ResPop_ABM, exp::ExperimentParams, n_rep
 end
 
 function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwargs...)
+    lin_tracker = _kw(kwargs, :lin_tracker, nothing)
     n_rep = _kw(kwargs, :n_rep, exp.n_rep)
     R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
     t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
@@ -313,6 +322,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
     inc_pot = Bool(_kw(kwargs, :inc_pot, exp.inc_pot))
     lin_df_outs = DataFrame[]
     rep_cells = _expand_split_cells_abm(model_eff, exp, n_rep;
+                                        lin_tracker = lin_tracker,
                                         R_real = R_real,
                                         drug_effect = de,
                                         skew_lib = skew_lib,
@@ -339,6 +349,7 @@ function _simulate_experiment_abm(model::ResPop_ABM, exp::ExperimentParams; kwar
 
         sim = _run_abm_passage_experiment!(
             model_eff, rep_cells[i];
+            lin_tracker = lin_tracker,
             t0 = 0.0, tmax = rep_tmax, t_Pass = exp.t_Pass,
             Nseed = nseed_last, Nmax = exp.Nmax, Cc = exp.Cc,
             treat_ons = exp.treat_ons, treat_offs = exp.treat_offs,
@@ -442,8 +453,10 @@ function _run_abm_passage_experiment!(
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
     K::Int64 = 0,
-    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing,
+    lin_tracker::Union{Nothing, LinTrackRecorder} = nothing
 )
+    _lin_track_context!(lin_tracker, "DT", rep)
     progress_tol = 0.1
 
     curr_t = t0
@@ -488,6 +501,7 @@ function _run_abm_passage_experiment!(
         prev_curr_t = curr_t
 
         sim = ABMSimParams(
+            lin_tracker = lin_tracker,
             t0 = curr_t,
             tmax = next_t,
             Nmax = Nmax,
@@ -624,7 +638,9 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
     dt_save_at::Float64 = model.abm.dt_save_at,
     t_frac::Float64 = model.abm.t_frac,
     neutral_tracker = _neutral_tracker(model.abm),
-    pot_lin_dfs::Union{Nothing, Vector{DataFrame}} = nothing)
+    pot_lin_dfs::Union{Nothing, Vector{DataFrame}} = nothing,
+    lin_tracker::Union{Nothing, LinTrackRecorder} = nothing)
+    _lin_track_context!(lin_tracker, "POT", 0)
 
     Nbuff = model.abm.Nbuff
     barcode_kwargs = (; skew_lib = skew_lib, use_lib_probs = use_lib_probs,
@@ -641,6 +657,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
 
         for i in 1:(length(exp.t_exp) - 1)
             stage_sim = ABMSimParams(
+                lin_tracker = lin_tracker,
                 t0 = 0.0,
                 tmax = exp.t_exp[i],
                 Nmax = exp.Nmax_exp,
@@ -664,6 +681,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
         end
 
         final_sim = ABMSimParams(
+            lin_tracker = lin_tracker,
             t0 = 0.0,
             tmax = exp.t_exp[end],
             Nmax = exp.Nmax_exp,
@@ -681,6 +699,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
         final_seed = exp.Nseed[end]
     elseif (exp.t_exp isa Float64) && (exp.Nseed isa Int64)
         final_sim = ABMSimParams(
+            lin_tracker = lin_tracker,
             t0 = 0.0,
             tmax = exp.t_exp,
             Nmax = exp.Nmax_exp,
@@ -713,6 +732,7 @@ function _expand_split_cells_abm(model::ResDmg_ABM, exp::ExperimentParams, n_rep
 end
 
 function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwargs...)
+    lin_tracker = _kw(kwargs, :lin_tracker, nothing)
     n_rep = _kw(kwargs, :n_rep, exp.n_rep)
     R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
     t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
@@ -737,6 +757,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
     inc_pot = Bool(_kw(kwargs, :inc_pot, exp.inc_pot))
     lin_df_outs = DataFrame[]
     rep_cells = _expand_split_cells_abm(model_eff, exp, n_rep;
+                                        lin_tracker = lin_tracker,
                                         R_real = R_real,
                                         drug_effect = de,
                                         skew_lib = skew_lib,
@@ -760,6 +781,7 @@ function _simulate_experiment_abm(model::ResDmg_ABM, exp::ExperimentParams; kwar
 
         sim = _run_abm_passage_experiment!(
             model_eff, rep_cells[i];
+            lin_tracker = lin_tracker,
             t0 = 0.0, tmax = rep_tmax, t_Pass = exp.t_Pass,
             Nseed = nseed_last, Nmax = exp.Nmax, Cc = exp.Cc,
             treat_ons = exp.treat_ons, treat_offs = exp.treat_offs,
@@ -857,9 +879,12 @@ function _run_abm_simple!(
     sub_sample_cells::Bool = false,
     K::Int64 = 0,
     neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing,
-    instant_kill::Union{Nothing, InstantKillState} = nothing
+    instant_kill::Union{Nothing, InstantKillState} = nothing,
+    lin_tracker::Union{Nothing, LinTrackRecorder} = nothing
 )
+    _lin_track_context!(lin_tracker, "DT", rep)
     sim = ABMSimParams(
+        lin_tracker = lin_tracker,
         t0 = t0,
         tmax = tmax,
         Nmax = Nmax,
@@ -922,9 +947,12 @@ function _run_abm_simple!(
     drug_effect::Symbol,
     sub_sample_cells::Bool = false,
     K::Int64 = 0,
-    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing
+    neutral_tracker::Union{Nothing, NeutralMutationTracker} = nothing,
+    lin_tracker::Union{Nothing, LinTrackRecorder} = nothing
 )
+    _lin_track_context!(lin_tracker, "DT", rep)
     sim = ABMSimParams(
+        lin_tracker = lin_tracker,
         t0 = t0,
         tmax = tmax,
         Nmax = Nmax,
@@ -973,6 +1001,7 @@ function _run_abm_simple!(
 end
 
 function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...)
+    lin_tracker = _kw(kwargs, :lin_tracker, nothing)
     R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
     t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
     de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
@@ -997,6 +1026,7 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
 
     sim_out = _run_abm_simple!(
         model_eff, cells;
+        lin_tracker = lin_tracker,
         t0 = 0.0, tmax = sim.tmax,
         Nmax = sim.Nmax, Cc = sim.Cc,
         treat_ons = sim.treat_ons, treat_offs = sim.treat_offs,
@@ -1026,6 +1056,7 @@ function _simulate_simple_abm(model::ResPop_ABM, sim::SimpleSimParams; kwargs...
 end
 
 function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...)
+    lin_tracker = _kw(kwargs, :lin_tracker, nothing)
     R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
     t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
     de = normalize_resdmg_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
@@ -1048,6 +1079,7 @@ function _simulate_simple_abm(model::ResDmg_ABM, sim::SimpleSimParams; kwargs...
 
     sim_out = _run_abm_simple!(
         model_eff, cells;
+        lin_tracker = lin_tracker,
         t0 = 0.0, tmax = sim.tmax,
         Nmax = sim.Nmax, Cc = sim.Cc,
         treat_ons = sim.treat_ons, treat_offs = sim.treat_offs,
@@ -1079,7 +1111,9 @@ function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams,
     skew_lib = model.abm.skew_lib, use_lib_probs = model.abm.use_lib_probs,
     split_after_barcoding = model.abm.split_after_barcoding, bc_unif = model.abm.bc_unif,
     Nbc = model.abm.Nbc, bc_probs = model.abm.bc_probs, dt_save_at = model.abm.dt_save_at,
-    t_frac = model.abm.t_frac, inc_pot = false, full_pheno_bc = false, pot_outputs = Dict{String, Any}())
+    t_frac = model.abm.t_frac, inc_pot = false, full_pheno_bc = false, pot_outputs = Dict{String, Any}(),
+    lin_tracker::Union{Nothing, LinTrackRecorder} = nothing)
+    _lin_track_context!(lin_tracker, "POT", 0)
     validate_abm_params(; skew_lib = Bool(skew_lib), use_lib_probs = Bool(use_lib_probs),
         Nbc = Int64(Nbc), bc_probs = Vector{Float64}(bc_probs))
     split_after_barcoding && !use_lib_probs && error("split_after_barcoding requires use_lib_probs=true.")
@@ -1092,8 +1126,8 @@ function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams,
         cells = seed_invivo_cells(exp.n0, 0.0, 0.0, n_buff; barcode_kwargs...)
         _assign_invivo_phenotype_by_barcode!(cells, :R, model.params.rho)
         _assign_invivo_phenotype_by_barcode!(cells, :EG, model.params.fEG1)
-        if inc_pot
-            sim = ABMSimParams(tmax = 0.0, Nmax = exp.Nmax, Cc = exp.Cc,
+        if inc_pot || lin_tracker !== nothing
+            sim = ABMSimParams(lin_tracker = lin_tracker, tmax = 0.0, Nmax = exp.Nmax, Cc = exp.Cc,
                 treat_ons = Float64[], treat_offs = Float64[], Passage = 0, R_real = R_real)
             out = run_model_core_abm(model, ResPopInVivoABMState(cells), sim)
             push!(pot_dfs, _invivo_abm_sol_df(out; cond = "POT", rep = Int64(0)))
@@ -1113,7 +1147,7 @@ function _expand_split_cells_abm(model::ResPopInVivo_ABM, exp::ExperimentParams,
         offset = 0.0
         for i in eachindex(durations)
             durations[i] >= 0 || error("Expansion durations must be nonnegative.")
-            sim = ABMSimParams(tmax = Float64(durations[i]), Nmax = exp.Nmax_exp, Cc = exp.Cc,
+            sim = ABMSimParams(lin_tracker = lin_tracker, tmax = Float64(durations[i]), Nmax = exp.Nmax_exp, Cc = exp.Cc,
                 treat_ons = Float64[], treat_offs = Float64[], R_real = R_real,
                 dt_save_at = dt_save_at, t_frac = t_frac, Passage = 0, drug_effect = drug_effect)
             out = run_model_core_abm(expansion, ResPopInVivoABMState(cells), sim)
@@ -1155,7 +1189,9 @@ function _run_abm_passage_experiment!(model::ResPopInVivo_ABM, cells::Vector{InV
     tmax::Float64, t_Pass, Nseed::Int64, Nmax::Int64, Cc::Int64,
     treat_ons, treat_offs, dt_save_at, Nbuff::Int64, R_real::String, t_frac,
     rep::Int64, treat::Bool, drug_effect::Symbol, cond::String = "DT",
-    sub_sample_cells::Bool = false, K::Int64 = 0, full_pheno_bc::Bool = false)
+    sub_sample_cells::Bool = false, K::Int64 = 0, full_pheno_bc::Bool = false,
+    lin_tracker::Union{Nothing, LinTrackRecorder} = nothing)
+    _lin_track_context!(lin_tracker, cond, rep)
     schedule = _passage_times(t_Pass, tmax)
     n_pass = length(schedule)+1
     schedule_idx = 1
@@ -1168,7 +1204,7 @@ function _run_abm_passage_experiment!(model::ResPopInVivo_ABM, cells::Vector{InV
             schedule_idx+= 1
         end
         boundary = schedule_idx <= length(schedule) ? min(tmax, schedule[schedule_idx]) : tmax
-        sim = ABMSimParams(t0 = time, tmax = boundary, Nmax = Nmax, Cc = Cc, treat_ons = treat_ons,
+        sim = ABMSimParams(lin_tracker = lin_tracker, t0 = time, tmax = boundary, Nmax = Nmax, Cc = Cc, treat_ons = treat_ons,
             treat_offs = treat_offs, dt_save_at = dt_save_at, R_real = R_real, t_frac = t_frac,
             Passage = passage, drug_effect = drug_effect)
         out = run_model_core_abm(model, ResPopInVivoABMState(cells), sim; treat = treat)
@@ -1205,6 +1241,7 @@ function _run_abm_passage_experiment!(model::ResPopInVivo_ABM, cells::Vector{InV
 end
 
 function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams; kwargs...)
+    lin_tracker = _kw(kwargs, :lin_tracker, nothing)
     n_rep = Int64(_kw(kwargs, :n_rep, exp.n_rep))
     n_rep>0 || error("n_rep must be > 0.")
     R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
@@ -1224,7 +1261,7 @@ function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams
     t_frac = _kw(kwargs, :t_frac, model.abm.t_frac)
     design = _experiment_condition_design(treat, inc_control, n_rep)
     pot = Dict{String, Any}()
-    reps, grafts = _expand_split_cells_abm(model_eff, exp, n_rep; R_real = R_real, drug_effect = de,
+    reps, grafts = _expand_split_cells_abm(model_eff, exp, n_rep; lin_tracker = lin_tracker, R_real = R_real, drug_effect = de,
         rep_design = design, inc_pot = inc_pot, full_pheno_bc = full_pheno_bc, pot_outputs = pot,
         skew_lib = _kw(kwargs, :skew_lib, model.abm.skew_lib),
         use_lib_probs = _kw(kwargs, :use_lib_probs, model.abm.use_lib_probs),
@@ -1241,6 +1278,7 @@ function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams
     for (i, rec) in enumerate(design)
         extend_with_dead_cells!(reps[i], model.abm.Nbuff, make_dead_cell_invivo)
         result = _run_abm_passage_experiment!(model_eff, reps[i];
+            lin_tracker = lin_tracker,
             tmax = _replicate_tmax(exp.tmax, n_rep, rec.rep), t_Pass = exp.t_Pass,
             Nseed = _nseed_last(exp.Nseed), Nmax = exp.Nmax, Cc = exp.Cc,
             treat_ons = exp.treat_ons, treat_offs = exp.treat_offs, dt_save_at = dt_save_at,
@@ -1267,6 +1305,7 @@ function _simulate_experiment_abm(model::ResPopInVivo_ABM, exp::ExperimentParams
 end
 
 function _simulate_simple_abm(model::ResPopInVivo_ABM, settings::SimpleSimParams; kwargs...)
+    lin_tracker = _kw(kwargs, :lin_tracker, nothing)
     R_real = normalize_R_real(_kw(kwargs, :R_real, "l"))
     de = normalize_respop_drug_effect(_kw(kwargs, :drug_effect, model.params.drug_effect))
     model_eff = _with_drug_effect(model, de)
@@ -1276,7 +1315,7 @@ function _simulate_simple_abm(model::ResPopInVivo_ABM, settings::SimpleSimParams
         use_lib_probs = Bool(_kw(kwargs, :use_lib_probs, model.abm.use_lib_probs)),
         bc_unif = Float64(_kw(kwargs, :bc_unif, model.abm.bc_unif)),
         Nbc = Int64(_kw(kwargs, :Nbc, model.abm.Nbc)), bc_probs = _kw(kwargs, :bc_probs, model.abm.bc_probs))
-    sim = ABMSimParams(tmax = settings.tmax, Nmax = settings.Nmax, Cc = settings.Cc,
+    sim = ABMSimParams(lin_tracker = lin_tracker, tmax = settings.tmax, Nmax = settings.Nmax, Cc = settings.Cc,
         treat_ons = settings.treat_ons, treat_offs = settings.treat_offs, R_real = R_real,
         dt_save_at = _kw(kwargs, :dt_save_at, model.abm.dt_save_at),
         t_frac = _kw(kwargs, :t_frac, model.abm.t_frac), drug_effect = de)

@@ -51,6 +51,7 @@ function _core_grow_kill_abm!(
     eventmax = bmax + dmax_fixed + zetmax + omemax + transitionmax
 
     t = sim.t0
+    _lin_track_start!(sim, cells)
     t_rec_change = sim.tmax * sim.t_frac
     t_rec = t_rec_change
     tvec = Float64[t]
@@ -76,7 +77,7 @@ function _core_grow_kill_abm!(
 
     # A population already at the cap needs no event proposal or clock advance.
     if Nt >= sim.Nmax
-        return ResDmgGrowOut(Nvec, tvec, Svec, DSvec, DRvec, Rvec, Pvec, t)
+        return _lin_track_end!(sim, cells, t, ResDmgGrowOut(Nvec, tvec, Svec, DSvec, DRvec, Rvec, Pvec, t))
     end
 
     if eventmax == 0.0
@@ -105,6 +106,7 @@ function _core_grow_kill_abm!(
         denom > 0.0 || error("ABM core loop encountered non-positive time-step denominator (rate*Nt=$(denom)).")
         dt = -log(rand()) / denom
         t += dt
+        _lin_track_until!(sim.lin_tracker, cells, min(t, sim.tmax), sim.Passage)
 
         if t >= t_rec
             push!(Nvec, Nt)
@@ -226,7 +228,7 @@ function _core_grow_kill_abm!(
                 push!(DRvec, phen_counts.DRcount)
                 push!(Rvec, phen_counts.Rcount)
                 push!(Pvec, sim.Passage)
-                return ResDmgGrowOut(Nvec, tvec, Svec, DSvec, DRvec, Rvec, Pvec, t)
+                return _lin_track_end!(sim, cells, t, ResDmgGrowOut(Nvec, tvec, Svec, DSvec, DRvec, Rvec, Pvec, t))
             end
         end
 
@@ -272,7 +274,7 @@ function _core_grow_kill_abm!(
     end
 
     fin_t = round(t, digits = 4)
-    return ResDmgGrowOut(Nvec, tvec, Svec, DSvec, DRvec, Rvec, Pvec, fin_t)
+    return _lin_track_end!(sim, cells, t, ResDmgGrowOut(Nvec, tvec, Svec, DSvec, DRvec, Rvec, Pvec, fin_t))
 end
 
 function run_model_core_abm(model::ResDmg_ABM_EvBC, state::ResDmgABMEvBCState, sim::ABMSimParams;

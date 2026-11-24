@@ -127,6 +127,9 @@ end
 """Record both sides of the instantaneous discontinuity at its exact time."""
 function _record_instant_kill!(cells, phen_counts, live_vec, dead_vec, event,
     sim, Nvec, tvec, Svec, Rvec, Evec, Pvec; time::Float64 = event.settings.inst_kill_time)
+    _lin_track_until!(sim.lin_tracker, cells, time, sim.Passage)
+    tracker = sim.lin_tracker
+    tracker === nothing || _lin_track_snapshot!(tracker, cells, tracker.offset + time, sim.Passage, "pre_treatment")
     push!(Nvec, n_alive(cells))
     push!(tvec, time)
     push!(Svec, phen_counts.Scount)
@@ -134,6 +137,7 @@ function _record_instant_kill!(cells, phen_counts, live_vec, dead_vec, event,
     push!(Evec, phen_counts.Ecount)
     push!(Pvec, sim.Passage)
     Nt = _instant_kill_event!(cells, phen_counts, live_vec, dead_vec, event)
+    tracker === nothing || _lin_track_snapshot!(tracker, cells, tracker.offset + time, sim.Passage, "post_treatment")
     event.time = time
     push!(Nvec, Nt)
     push!(tvec, time)

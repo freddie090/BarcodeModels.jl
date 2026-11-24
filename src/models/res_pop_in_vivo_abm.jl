@@ -171,6 +171,7 @@ function _core_grow_kill_abm_invivo!(
     bdmax = bmax + dmax + transitionmax
 
     t = sim.t0
+    _lin_track_start!(sim, cells)
     t_rec_change = sim.tmax * sim.t_frac
     t_rec = t_rec_change
     tvec = Float64[t]
@@ -198,8 +199,8 @@ function _core_grow_kill_abm_invivo!(
 
     # A population already at the cap needs no event proposal or clock advance.
     if Nt == 0 || Nt >= sim.Nmax || t >= sim.tmax
-        return ResPopInVivoGrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t,
-            S_EG0_vec, S_EG1_vec, R_EG0_vec, R_EG1_vec, E_EG0_vec, E_EG1_vec)
+        return _lin_track_end!(sim, cells, t, ResPopInVivoGrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t,
+            S_EG0_vec, S_EG1_vec, R_EG0_vec, R_EG1_vec, E_EG0_vec, E_EG1_vec))
     end
 
     if bdmax == 0.0
@@ -227,6 +228,7 @@ function _core_grow_kill_abm_invivo!(
         denom > 0.0 || error("ABM core loop encountered non-positive time-step denominator (bdmax*Nt=$(denom)).")
         dt = -log(rand()) / denom
         t += dt
+        _lin_track_until!(sim.lin_tracker, cells, min(t, sim.tmax), sim.Passage)
 
         if t >= t_rec
             push!(Nvec, Nt)
@@ -328,8 +330,8 @@ function _core_grow_kill_abm_invivo!(
                 push!(Evec, phen_counts.Ecount)
                 push!(Pvec, sim.Passage)
                 _push_invivo_abm_pheno_eg_counts!(S_EG0_vec, S_EG1_vec, R_EG0_vec, R_EG1_vec, E_EG0_vec, E_EG1_vec, cells)
-                return ResPopInVivoGrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t,
-            S_EG0_vec, S_EG1_vec, R_EG0_vec, R_EG1_vec, E_EG0_vec, E_EG1_vec)
+                return _lin_track_end!(sim, cells, t, ResPopInVivoGrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, t,
+            S_EG0_vec, S_EG1_vec, R_EG0_vec, R_EG1_vec, E_EG0_vec, E_EG1_vec))
             end
         end
 
@@ -370,8 +372,8 @@ function _core_grow_kill_abm_invivo!(
     end
 
     fin_t = last(tvec)
-    return ResPopInVivoGrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, fin_t,
-            S_EG0_vec, S_EG1_vec, R_EG0_vec, R_EG1_vec, E_EG0_vec, E_EG1_vec)
+    return _lin_track_end!(sim, cells, t, ResPopInVivoGrowOut(Nvec, tvec, Svec, Rvec, Evec, Pvec, fin_t,
+            S_EG0_vec, S_EG1_vec, R_EG0_vec, R_EG1_vec, E_EG0_vec, E_EG1_vec))
 end
 
 function run_model_core_abm(model::ResPopInVivo_ABM, state::ResPopInVivoABMState, sim::ABMSimParams; treat::Bool = false)
